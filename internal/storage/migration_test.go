@@ -84,6 +84,40 @@ func TestApplyMigrationRegistryRejectsOutOfOrderEntries(t *testing.T) {
 	}
 }
 
+func TestLegacyConcurrencyMigrationChainRebasesAfterUpstreamNumbering(t *testing.T) {
+	db := openInternalMigrationTestDatabase(t)
+	if err := applyMigrationRegistry(db, migrations[:15]); err != nil {
+		t.Fatalf("apply pre-concurrency migrations: %v", err)
+	}
+	legacy := append([]migration{}, migrations[:15]...)
+	legacy = append(legacy,
+		migration{ID: "0016_concurrency", Up: migrationfiles.UpConcurrency, Validate: migrationfiles.ValidateConcurrency, ValidateRecoverable: migrationfiles.ValidateRecoverableConcurrency},
+		migration{ID: "0017_request_log_processing", Up: migrationfiles.UpRequestLogProcessing, Validate: migrationfiles.ValidateRequestLogProcessing, ValidateRecoverable: migrationfiles.ValidateRecoverableRequestLogProcessing},
+		migration{ID: "0018_access_key_cost_limit_period_anchor", Up: migrationfiles.UpAccessKeyCostLimitPeriodAnchor, Validate: migrationfiles.ValidateAccessKeyCostLimitPeriodAnchor, ValidateRecoverable: migrationfiles.ValidateRecoverableAccessKeyCostLimitPeriodAnchor},
+	)
+	if err := applyMigrationRegistry(db, legacy); err != nil {
+		t.Fatalf("apply legacy concurrency chain: %v", err)
+	}
+	if err := AutoMigrate(db); err != nil {
+		t.Fatalf("rebase legacy concurrency chain: %v", err)
+	}
+	var ids []string
+	if err := db.Model(&schemaMigration{}).Order("id ASC").Pluck("id", &ids).Error; err != nil {
+		t.Fatalf("read rebased migration ledger: %v", err)
+	}
+	if !reflect.DeepEqual(ids, migrationIDs(migrations)) {
+		t.Fatalf("rebased migration ledger = %v, want canonical chain", ids)
+	}
+}
+
+func migrationIDs(entries []migration) []string {
+	ids := make([]string, len(entries))
+	for index, entry := range entries {
+		ids[index] = entry.ID
+	}
+	return ids
+}
+
 func testMigrationRegistry() ([]migration, *[]string) {
 	calls := make([]string, 0, 2)
 	entry := func(id string) migration {

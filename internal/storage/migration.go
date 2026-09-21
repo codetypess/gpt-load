@@ -235,29 +235,89 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 // and policies, then let the normal runner apply the index and register 0016.
 func rebaseLegacyConcurrencyMigration(db *gorm.DB, entries []migration, applied []string) ([]string, error) {
 	const legacyID = "0015_concurrency"
-	if len(entries) < 15 || entries[14].ID != migrationfiles.ID0015 || len(applied) != 15 {
-		return applied, nil
-	}
-	legacy := applied[14]
-	if legacy != legacyID && legacy != migrationResumeMarker(legacyID) {
-		return applied, nil
-	}
-	for index, id := range applied[:14] {
-		if id != entries[index].ID {
-			return applied, nil // Leave unrelated ledger errors to the normal validator.
+	if len(entries) >= 15 && entries[14].ID == migrationfiles.ID0015 && len(applied) == 15 {
+		legacy := applied[14]
+		if legacy == legacyID || legacy == migrationResumeMarker(legacyID) {
+			for index, id := range applied[:14] {
+				if id != entries[index].ID {
+					return applied, nil // Leave unrelated ledger errors to the normal validator.
+				}
+			}
+			validate := migrationfiles.ValidateConcurrency
+			if legacy != legacyID {
+				validate = migrationfiles.ValidateRecoverableConcurrency
+			}
+			if err := validate(db); err != nil {
+				return nil, fmt.Errorf("validate legacy concurrency migration: %w", err)
+			}
+			if err := db.Where("id = ?", legacy).Delete(&schemaMigration{}).Error; err != nil {
+				return nil, fmt.Errorf("rebase legacy concurrency migration: %w", err)
+			}
+			return applied[:14], nil
 		}
 	}
-	validate := migrationfiles.ValidateConcurrency
-	if legacy != legacyID {
-		validate = migrationfiles.ValidateRecoverableConcurrency
+	return rebaseLegacyConcurrencyChain(db, entries, applied)
+}
+
+// Older builds registered the concurrency, request-log-processing, and cost
+// limit period-anchor migrations as 0016-0018. Upstream later used those IDs
+// for different migrations. Preserve the already-applied schema changes while
+// replacing the legacy ledger suffix with the canonical chain so startup can
+// continue safely.
+func rebaseLegacyConcurrencyChain(db *gorm.DB, entries []migration, applied []string) ([]string, error) {
+	if len(entries) < 23 ||
+		entries[14].ID != migrationfiles.ID0015 ||
+		entries[15].ID != migrationfiles.ID0016 ||
+		entries[20].ID != migrationfiles.IDConcurrency ||
+		len(applied) < 16 || len(applied) > 18 {
+		return applied, nil
 	}
-	if err := validate(db); err != nil {
-		return nil, fmt.Errorf("validate legacy concurrency migration: %w", err)
+	for index := 0; index < 15; index++ {
+		if applied[index] != entries[index].ID {
+			return applied, nil
+		}
 	}
-	if err := db.Where("id = ?", legacy).Delete(&schemaMigration{}).Error; err != nil {
-		return nil, fmt.Errorf("rebase legacy concurrency migration: %w", err)
+	legacyIDs := []string{
+		"0016_concurrency",
+		"0017_request_log_processing",
+		"0018_access_key_cost_limit_period_anchor",
 	}
-	return applied[:14], nil
+	for index := 15; index < len(applied); index++ {
+		legacyID := legacyIDs[index-15]
+		if applied[index] != legacyID && applied[index] != migrationResumeMarker(legacyID) {
+			return applied, nil
+		}
+	}
+	validators := []struct {
+		id           string
+		validate     func(*gorm.DB) error
+		recoverable  func(*gorm.DB) error
+		appliedIndex int
+	}{
+		{legacyIDs[0], migrationfiles.ValidateConcurrency, migrationfiles.ValidateRecoverableConcurrency, 15},
+		{legacyIDs[1], migrationfiles.ValidateRequestLogProcessing, migrationfiles.ValidateRecoverableRequestLogProcessing, 16},
+		{legacyIDs[2], migrationfiles.ValidateAccessKeyCostLimitPeriodAnchor, migrationfiles.ValidateRecoverableAccessKeyCostLimitPeriodAnchor, 17},
+	}
+	for _, migration := range validators {
+		if migration.appliedIndex >= len(applied) {
+			break
+		}
+		validate := migration.validate
+		if applied[migration.appliedIndex] == migrationResumeMarker(migration.id) {
+			validate = migration.recoverable
+		}
+		if err := validate(db); err != nil {
+			return nil, fmt.Errorf("validate legacy migration %s: %w", migration.id, err)
+		}
+	}
+	legacyRecords := make([]string, 0, len(applied)-15)
+	for _, id := range applied[15:] {
+		legacyRecords = append(legacyRecords, id)
+	}
+	if err := db.Where("id IN ?", legacyRecords).Delete(&schemaMigration{}).Error; err != nil {
+		return nil, fmt.Errorf("rebase legacy migration chain: %w", err)
+	}
+	return applied[:15], nil
 }
 
 func applyMigration(db *gorm.DB, entry migration, useMigrationTransactions bool) error {
