@@ -32,9 +32,6 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0018,
 		migrationfiles.ID0019,
 		migrationfiles.ID0020,
-		migrationfiles.IDConcurrency,
-		migrationfiles.IDRequestLogProcessing,
-		migrationfiles.IDAccessKeyCostLimitPeriodAnchor,
 	}
 	if len(migrations) != len(wantIDs) {
 		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
@@ -91,9 +88,9 @@ func TestLegacyConcurrencyMigrationChainRebasesAfterUpstreamNumbering(t *testing
 	}
 	legacy := append([]migration{}, migrations[:15]...)
 	legacy = append(legacy,
-		migration{ID: "0016_concurrency", Up: migrationfiles.UpConcurrency, Validate: migrationfiles.ValidateConcurrency, ValidateRecoverable: migrationfiles.ValidateRecoverableConcurrency},
-		migration{ID: "0017_request_log_processing", Up: migrationfiles.UpRequestLogProcessing, Validate: migrationfiles.ValidateRequestLogProcessing, ValidateRecoverable: migrationfiles.ValidateRecoverableRequestLogProcessing},
-		migration{ID: "0018_access_key_cost_limit_period_anchor", Up: migrationfiles.UpAccessKeyCostLimitPeriodAnchor, Validate: migrationfiles.ValidateAccessKeyCostLimitPeriodAnchor, ValidateRecoverable: migrationfiles.ValidateRecoverableAccessKeyCostLimitPeriodAnchor},
+		migration{ID: migrationfiles.LegacyIDConcurrency, Up: migrationfiles.UpConcurrency, Validate: migrationfiles.ValidateConcurrency, ValidateRecoverable: migrationfiles.ValidateRecoverableConcurrency},
+		migration{ID: migrationfiles.LegacyIDRequestLogProcessing, Up: migrationfiles.UpRequestLogProcessing, Validate: migrationfiles.ValidateRequestLogProcessing, ValidateRecoverable: migrationfiles.ValidateRecoverableRequestLogProcessing},
+		migration{ID: migrationfiles.LegacyIDAccessKeyCostLimitPeriodAnchor, Up: migrationfiles.UpAccessKeyCostLimitPeriodAnchor, Validate: migrationfiles.ValidateAccessKeyCostLimitPeriodAnchor, ValidateRecoverable: migrationfiles.ValidateRecoverableAccessKeyCostLimitPeriodAnchor},
 	)
 	if err := applyMigrationRegistry(db, legacy); err != nil {
 		t.Fatalf("apply legacy concurrency chain: %v", err)

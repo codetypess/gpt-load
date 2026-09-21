@@ -62,12 +62,20 @@ func Up0018(db *gorm.DB) error {
 			}
 		}
 	}
+	if db.Migrator().HasTable(autoLog0018{}.TableName()) && db.Migrator().HasTable("access_key_cost_limit_rules") {
+		if err := UpAccessKeyCostLimitPeriodAnchor(db); err != nil {
+			return err
+		}
+	}
 	return Validate0018(db)
 }
 
 func ValidateRecoverable0018(db *gorm.DB) error {
 	if !db.Migrator().HasTable("request_logs") {
 		return fmt.Errorf("automatic model migration requires request_logs")
+	}
+	if db.Migrator().HasTable("access_key_cost_limit_rules") {
+		return ValidateRecoverableAccessKeyCostLimitPeriodAnchor(db)
 	}
 	return nil
 }
@@ -92,6 +100,9 @@ func Validate0018(db *gorm.DB) error {
 				return fmt.Errorf("automatic model field %s missing", name)
 			}
 		}
+	}
+	if db.Migrator().HasTable("access_key_cost_limit_rules") {
+		return ValidateAccessKeyCostLimitPeriodAnchor(db)
 	}
 	return nil
 }

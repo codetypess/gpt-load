@@ -29,6 +29,9 @@ func Up0017(db *gorm.DB) error {
 	if err := ValidateRecoverable0017(db); err != nil {
 		return err
 	}
+	if err := UpRequestLogProcessing(db); err != nil {
+		return err
+	}
 	if !db.Migrator().HasIndex(&requestLog0017{}, requestLogOperationIndex0017) {
 		if err := db.Migrator().CreateIndex(&requestLog0017{}, requestLogOperationIndex0017); err != nil {
 			return fmt.Errorf("create request log operation index: %w", err)
@@ -40,6 +43,9 @@ func Up0017(db *gorm.DB) error {
 func ValidateRecoverable0017(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&requestLog0017{}) {
 		return fmt.Errorf("request log operation index: request_logs table is missing")
+	}
+	if err := ValidateRecoverableRequestLogProcessing(db); err != nil {
+		return err
 	}
 	if db.Migrator().HasIndex(&requestLog0017{}, requestLogOperationIndex0017) {
 		return Validate0017(db)
@@ -68,7 +74,7 @@ func Validate0017(db *gorm.DB) error {
 			return fmt.Errorf("request log operation index has an unexpected definition")
 		}
 	}
-	return nil
+	return ValidateRequestLogProcessing(db)
 }
 
 func requestLogOperationIndexColumns0017(db *gorm.DB) ([]requestLogOperationIndexColumn0017, error) {

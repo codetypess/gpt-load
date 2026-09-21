@@ -111,9 +111,6 @@ var migrations = []migration{
 	{ID: migrationfiles.ID0018, Up: migrationfiles.Up0018, Validate: migrationfiles.Validate0018, ValidateRecoverable: migrationfiles.ValidateRecoverable0018},
 	{ID: migrationfiles.ID0019, Up: migrationfiles.Up0019, Validate: migrationfiles.Validate0019, ValidateRecoverable: migrationfiles.ValidateRecoverable0019},
 	{ID: migrationfiles.ID0020, Up: migrationfiles.Up0020, Validate: migrationfiles.Validate0020, ValidateRecoverable: migrationfiles.ValidateRecoverable0020},
-	{ID: migrationfiles.IDConcurrency, Up: migrationfiles.UpConcurrency, Validate: migrationfiles.ValidateConcurrency, ValidateRecoverable: migrationfiles.ValidateRecoverableConcurrency},
-	{ID: migrationfiles.IDRequestLogProcessing, Up: migrationfiles.UpRequestLogProcessing, Validate: migrationfiles.ValidateRequestLogProcessing, ValidateRecoverable: migrationfiles.ValidateRecoverableRequestLogProcessing},
-	{ID: migrationfiles.IDAccessKeyCostLimitPeriodAnchor, Up: migrationfiles.UpAccessKeyCostLimitPeriodAnchor, Validate: migrationfiles.ValidateAccessKeyCostLimitPeriodAnchor, ValidateRecoverable: migrationfiles.ValidateRecoverableAccessKeyCostLimitPeriodAnchor},
 }
 
 func applyMigrations(db *gorm.DB) error {
@@ -200,6 +197,9 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 	if err != nil {
 		return err
 	}
+	if err := repairMergedMigrationFeatures(db, entries, applied); err != nil {
+		return err
+	}
 	if len(applied) > 0 {
 		lastIndex := len(applied) - 1
 		if lastIndex < len(entries) &&
@@ -228,6 +228,30 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 		}
 	}
 	return validateMigrationForeignKeys(db)
+}
+
+// Upstream databases may already have recorded 0016-0018 before the local
+// features were merged into those same migration numbers. Repair the merged
+// schema in place without changing the ledger, so those databases remain
+// compatible with the canonical chain.
+func repairMergedMigrationFeatures(db *gorm.DB, entries []migration, applied []string) error {
+	if len(entries) < 20 || len(applied) < 16 || entries[15].ID != migrationfiles.ID0016 {
+		return nil
+	}
+	if err := migrationfiles.UpConcurrency(db); err != nil {
+		return fmt.Errorf("repair merged 0016 migration: %w", err)
+	}
+	if len(applied) >= 17 {
+		if err := migrationfiles.UpRequestLogProcessing(db); err != nil {
+			return fmt.Errorf("repair merged 0017 migration: %w", err)
+		}
+	}
+	if len(applied) >= 18 {
+		if err := migrationfiles.UpAccessKeyCostLimitPeriodAnchor(db); err != nil {
+			return fmt.Errorf("repair merged 0018 migration: %w", err)
+		}
+	}
+	return nil
 }
 
 // The original concurrency feature used 0015 before upstream assigned that
@@ -265,10 +289,10 @@ func rebaseLegacyConcurrencyMigration(db *gorm.DB, entries []migration, applied 
 // replacing the legacy ledger suffix with the canonical chain so startup can
 // continue safely.
 func rebaseLegacyConcurrencyChain(db *gorm.DB, entries []migration, applied []string) ([]string, error) {
-	if len(entries) < 23 ||
+	if len(entries) < 20 ||
 		entries[14].ID != migrationfiles.ID0015 ||
 		entries[15].ID != migrationfiles.ID0016 ||
-		entries[20].ID != migrationfiles.IDConcurrency ||
+		entries[19].ID != migrationfiles.ID0020 ||
 		len(applied) < 16 || len(applied) > 18 {
 		return applied, nil
 	}
@@ -278,9 +302,9 @@ func rebaseLegacyConcurrencyChain(db *gorm.DB, entries []migration, applied []st
 		}
 	}
 	legacyIDs := []string{
-		"0016_concurrency",
-		"0017_request_log_processing",
-		"0018_access_key_cost_limit_period_anchor",
+		migrationfiles.LegacyIDConcurrency,
+		migrationfiles.LegacyIDRequestLogProcessing,
+		migrationfiles.LegacyIDAccessKeyCostLimitPeriodAnchor,
 	}
 	for index := 15; index < len(applied); index++ {
 		legacyID := legacyIDs[index-15]

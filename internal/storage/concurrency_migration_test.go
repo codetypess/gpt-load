@@ -29,7 +29,7 @@ func testLegacyConcurrencyMigration(t *testing.T, open func(*testing.T) *gorm.DB
 	for _, interrupted := range []bool{false, true} {
 		t.Run(fmt.Sprintf("legacy_interrupted_%t", interrupted), func(t *testing.T) {
 			db := open(t)
-			legacy := migrations[20]
+			legacy := migrations[15]
 			legacy.ID = "0015_concurrency"
 			entries := append(append([]migration{}, migrations[:14]...), legacy)
 			if err := applyMigrationRegistry(db, entries); err != nil {
@@ -73,12 +73,12 @@ func testConcurrencyMigration(t *testing.T, open func(*testing.T) *gorm.DB) {
 		t.Run(scenario, func(t *testing.T) {
 			db := open(t)
 			if scenario != "fresh" {
-				if err := applyMigrationRegistry(db, migrations[:20]); err != nil {
+				if err := applyMigrationRegistry(db, migrations[:15]); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if scenario == "interrupted" {
-				entry := migrations[20]
+				entry := migrations[15]
 				up := entry.Up
 				entry.Up = func(tx *gorm.DB) error {
 					if err := up(tx); err != nil {
@@ -86,7 +86,7 @@ func testConcurrencyMigration(t *testing.T, open func(*testing.T) *gorm.DB) {
 					}
 					return fmt.Errorf("interrupted concurrency DDL")
 				}
-				if err := applyMigrationRegistry(db, append(append([]migration{}, migrations[:20]...), entry)); err == nil {
+				if err := applyMigrationRegistry(db, append(append([]migration{}, migrations[:15]...), entry)); err == nil {
 					t.Fatal("expected interruption")
 				}
 			}

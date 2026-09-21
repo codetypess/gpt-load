@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const IDConcurrency = "0021_concurrency"
+const LegacyIDConcurrency = "0016_concurrency"
 
 type concurrencyPolicy0016 struct {
 	Subject        string `gorm:"type:varchar(255);primaryKey;not null"`

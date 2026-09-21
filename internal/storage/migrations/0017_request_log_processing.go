@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const IDRequestLogProcessing = "0022_request_log_processing"
+const LegacyIDRequestLogProcessing = "0017_request_log_processing"
 
 const requestLogStatusExpression0017 = "status IN ('processing','success','error','incomplete','canceled')"
 

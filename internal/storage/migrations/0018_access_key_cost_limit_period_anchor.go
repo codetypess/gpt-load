@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const IDAccessKeyCostLimitPeriodAnchor = "0023_access_key_cost_limit_period_anchor"
+const LegacyIDAccessKeyCostLimitPeriodAnchor = "0018_access_key_cost_limit_period_anchor"
 
 const (
 	accessKeyCostLimitRuleTable0018 = "access_key_cost_limit_rules"

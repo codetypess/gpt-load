@@ -30,21 +30,24 @@ func (quotaHistory0016) TableName() string { return "credential_quota_histories"
 
 // Up0016 使用冻结模型扩展三数据库的同一增量链。
 func Up0016(db *gorm.DB) error {
-	if Validate0016(db) == nil {
-		return nil
-	}
 	if err := ValidateRecoverable0016(db); err != nil {
 		return err
 	}
+	if Validate0016(db) == nil {
+		return nil
+	}
 	if err := db.AutoMigrate(&quotaHistory0016{}); err != nil {
 		return fmt.Errorf("create credential quota history: %w", err)
+	}
+	if err := UpConcurrency(db); err != nil {
+		return err
 	}
 	return Validate0016(db)
 }
 
 func ValidateRecoverable0016(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&quotaHistory0016{}) {
-		return nil
+		return ValidateRecoverableConcurrency(db)
 	}
 	if Validate0016(db) == nil {
 		return nil
@@ -69,7 +72,7 @@ func ValidateRecoverable0016(db *gorm.DB) error {
 			return fmt.Errorf("quota history contains unexpected column %q", column.Name())
 		}
 	}
-	return nil
+	return ValidateRecoverableConcurrency(db)
 }
 
 func Validate0016(db *gorm.DB) error {
@@ -117,5 +120,5 @@ func Validate0016(db *gorm.DB) error {
 			return fmt.Errorf("quota history constraint %s is missing", name)
 		}
 	}
-	return nil
+	return ValidateConcurrency(db)
 }
