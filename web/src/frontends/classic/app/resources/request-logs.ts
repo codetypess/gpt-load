@@ -22,6 +22,7 @@ import {
   projectPriceMultiplier,
   projectRecord,
   projectSafeInteger,
+  projectFiniteNumber,
   projectString,
 } from './projector'
 
@@ -50,12 +51,14 @@ export type RequestLogOperation =
   | 'responses_input_items'
   | 'responses_compact'
   | 'responses_input_tokens'
+  | 'web_search'
   | 'count_tokens'
   | 'responses_passthrough'
   | 'images_generate'
   | 'images_edit'
   | 'embeddings_create'
   | 'rerank'
+  | 'decisions_create'
   | 'list_models'
   | 'probe'
 export type RequestLogRouteMode = 'native' | 'converted'
@@ -131,8 +134,10 @@ export interface RequestLogAttemptDto {
   group_name: string
   channel_id: string | null
   credential_id: number | null
-  /** 凭据的可读标识（掩码）。凭据已删除时为空。 */
+  /** 凭据的可读标识（掩码）；无法取得标识不代表删除。 */
   credential_name: string
+  /** 仅供前端展示，由既有名称字段推导，不属于响应字段。 */
+  credential_deleted: boolean
   operation: RequestLogOperation | null
   route_mode: RequestLogRouteMode | null
   upstream_model: string | null
@@ -165,6 +170,7 @@ export interface RequestLogReasoningDto {
 }
 
 export interface RequestLogItemDto {
+  auto_decision?: AutoDecisionDto
   request_id: string
   completed_at_ms: number
   access_key: { id: number; name: string | null; deleted: boolean }
@@ -189,8 +195,10 @@ export interface RequestLogItemDto {
   group_id: number | null
   channel_id: string | null
   credential_id: number | null
-  /** 凭据的可读标识（掩码）。凭据已删除时为空。 */
+  /** 凭据的可读标识（掩码）；无法取得标识不代表删除。 */
   credential_name: string
+  /** 仅供前端展示，由既有名称字段推导，不属于响应字段。 */
+  credential_deleted: boolean
   route_mode: RequestLogRouteMode | null
   usage_state: RequestLogUsageState
   cost_state: RequestLogCostState
@@ -204,6 +212,31 @@ export interface RequestLogItemDto {
   cache_write_unknown_tokens: string
   output_tokens: string
   estimated_cost_nano_usd: string
+}
+
+export interface AutoDecisionDto {
+  selection: { preset_name: string; target_model: string }
+  source: string
+  status: string
+  execution_phase: string
+  reason: string
+  provider: string
+  group_name: string
+  channel_name: string
+  credential_name: string
+  credential_deleted: boolean
+  requested_model: string
+  upstream_model: string
+  reported_model: string
+  duration_ms: number
+  called: boolean
+  confidence: number | null
+  input_tokens: string | null
+  output_tokens: string | null
+  estimated_cost_nano_usd: string
+  cost_state: string
+  pricing_completeness: string
+  receipt: RequestLogPricingReceiptDto | null
 }
 
 export interface RequestLogDetailDto extends RequestLogItemDto {
@@ -246,12 +279,14 @@ const operations = [
   'responses_input_items',
   'responses_compact',
   'responses_input_tokens',
+  'web_search',
   'count_tokens',
   'responses_passthrough',
   'images_generate',
   'images_edit',
   'embeddings_create',
   'rerank',
+  'decisions_create',
   'list_models',
   'probe',
 ] as const
@@ -270,6 +305,10 @@ const receiptCodes = [
 ] as const
 const receiptLineStates = ['priced', 'unpriced'] as const
 const itemFields = [
+  'auto_decision',
+  'total_estimated_cost_nano_usd',
+  'total_cost_state',
+  'total_pricing_completeness',
   'request_id',
   'completed_at_ms',
   'access_key',
@@ -492,6 +531,7 @@ function projectAttempt(value: unknown): RequestLogAttemptDto {
         ? null
         : projectSafeInteger(record.credential_id, { minimum: 1 }),
     credential_name: projectString(record.credential_name, { allowEmpty: true }),
+    credential_deleted: record.credential_id !== null && record.credential_name === '',
     operation: record.operation === null ? null : projectEnum(record.operation, operations),
     route_mode: record.route_mode === null ? null : projectEnum(record.route_mode, routeModes),
     upstream_model: projectNullableModel(record.upstream_model),
@@ -643,6 +683,7 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
         ? null
         : projectSafeInteger(record.credential_id, { minimum: 1 }),
     credential_name: projectString(record.credential_name, { allowEmpty: true }),
+    credential_deleted: record.credential_id !== null && record.credential_name === '',
     route_mode: record.route_mode === null ? null : projectEnum(record.route_mode, routeModes),
     pricing_mode: record.pricing_mode === null ? null : projectPricingMode(record.pricing_mode),
     context_threshold_tokens:
@@ -650,6 +691,54 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
         ? null
         : projectNonNegativeInt64String(record.context_threshold_tokens),
     ...projectUsageCost(record),
+    auto_decision:
+      record.auto_decision === undefined ? undefined : projectAutoDecision(record.auto_decision),
+    estimated_cost_nano_usd: projectNonNegativeInt64String(
+      record.total_estimated_cost_nano_usd ?? record.estimated_cost_nano_usd,
+    ),
+    cost_state: projectEnum(record.total_cost_state ?? record.cost_state, costStates),
+    pricing_completeness: projectEnum(
+      record.total_pricing_completeness ?? record.pricing_completeness,
+      pricingCompletenessValues,
+    ),
+  }
+}
+
+function projectAutoDecision(value: unknown): AutoDecisionDto {
+  const row = projectRecord(value),
+    selection = projectRecord(row.selection)
+  const optional = (value: unknown) => projectString(value ?? '', { allowEmpty: true })
+  return {
+    selection: {
+      preset_name: projectString(selection.preset_name),
+      target_model: projectString(selection.target_model),
+    },
+    source: projectString(row.source),
+    status: projectString(row.status),
+    execution_phase: optional(row.execution_phase),
+    reason: optional(row.reason),
+    provider: optional(row.provider),
+    group_name: optional(row.group_name),
+    channel_name: optional(row.channel_name),
+    credential_name: optional(row.credential_name),
+    credential_deleted: projectBoolean(row.credential_deleted ?? false),
+    requested_model: optional(row.requested_model),
+    upstream_model: optional(row.upstream_model),
+    reported_model: optional(row.reported_model),
+    duration_ms: projectSafeInteger(row.duration_ms, { minimum: 0 }),
+    called: projectBoolean(row.called),
+    confidence:
+      row.confidence === undefined
+        ? null
+        : projectFiniteNumber(row.confidence, { minimum: 0, maximum: 1 }),
+    input_tokens:
+      row.input_tokens === undefined ? null : projectNonNegativeInt64String(row.input_tokens),
+    output_tokens:
+      row.output_tokens === undefined ? null : projectNonNegativeInt64String(row.output_tokens),
+    estimated_cost_nano_usd: projectNonNegativeInt64String(row.estimated_cost_nano_usd),
+    cost_state: projectString(row.cost_state),
+    pricing_completeness: projectString(row.pricing_completeness),
+    receipt: row.receipt === undefined ? null : projectPricingReceipt(row.receipt),
   }
 }
 

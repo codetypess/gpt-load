@@ -16,6 +16,49 @@ import (
 	"gpt-load/internal/storage/models"
 )
 
+func TestModernCredentialDetailPreservesWindowUsage(t *testing.T) {
+	initControlI18n(t)
+	fixture, group, id := newSubscriptionCredentialFixture(t)
+	var credential models.Credential
+	if err := fixture.db.Take(&credential, id).Error; err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UnixMilli()
+	if err := fixture.db.Create(&models.CredentialObservation{CredentialID: id, IdentityFingerprint: credential.IdentityFingerprint, SchemaVersion: 1, ObservationVersion: 1, State: models.CredentialObservationFresh, ObservedAtMS: &at, UpdatedAtMS: at, SnapshotJSON: models.JSON(fmt.Sprintf(`{"quota_windows":[{"id":"primary","scope":"account","unit":"percent","state":"available","window_seconds":18000,"reset_at_ms":%d}]}`, at+3_600_000))}).Error; err != nil {
+		t.Fatal(err)
+	}
+	reader := &recordingCredentialWindowUsageReader{}
+	reader.result = requestlog.CredentialWindowUsage{
+		UsageAggregate: requestlog.UsageAggregate{
+			RequestCount: 12, UncachedInputTokens: 110, CacheReadTokens: 50,
+			OutputTokens: 70, EstimatedCostNanoUSD: 20_000_000,
+		},
+		DataComplete: true,
+	}
+	fixture.service.credentialWindowUsage = reader
+	engine := gin.New()
+	NewServer(&config.Config{AuthKey: authTestKey}, fixture.service).RegisterRoutes(engine)
+	result := performGroupCollectionRequest(engine, fmt.Sprintf("/api/modern/groups/%d/credentials/%d", group, id), "Bearer "+authTestKey)
+	if result.Code != http.StatusOK {
+		t.Fatalf("detail status=%d body=%s", result.Code, result.Body.String())
+	}
+	var data CredentialDetailResponse
+	if err := json.Unmarshal(decodeGroupCollectionSuccessData(t, result), &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Observation.Snapshot == nil || len(data.Observation.Snapshot.QuotaWindows) != 1 {
+		t.Fatalf("existing quota window is missing: %+v", data.Observation)
+	}
+	window := data.Observation.Snapshot.QuotaWindows[0]
+	usage := window.ObservedUsage
+	if usage == nil || usage.RequestCount != 12 || usage.TotalTokens != 230 || usage.EstimatedReferenceCostNanoUSD != "20000000" || !usage.DataComplete || !usage.UsageComplete || !usage.PricingComplete {
+		t.Fatalf("existing window usage is missing or changed: %+v", usage)
+	}
+	if len(reader.queries) != 1 || reader.queries[0].CredentialID != id || reader.queries[0].FromMS != at+3_600_000-18_000_000 || reader.queries[0].ToMS != at+3_600_000 {
+		t.Fatalf("existing usage scope changed: %+v", reader.queries)
+	}
+}
+
 func TestModernCredentialFiltersRunBeforePagination(t *testing.T) {
 	t.Parallel()
 	initControlI18n(t)
@@ -39,6 +82,7 @@ func TestModernCredentialFiltersRunBeforePagination(t *testing.T) {
 	}
 	engine := gin.New()
 	NewServer(&config.Config{AuthKey: "test-auth-key"}, fixture.service).RegisterRoutes(engine)
+	credentialKey := fixture.encryption.Hash("credential-filter/v1|openai|api_key|" + last.Fingerprint)
 	updated := serveGroupDetailLedgerRoute(t, engine, http.MethodPut,
 		fmt.Sprintf("/api/groups/%d/credentials/%d", created.GroupID, last.ID),
 		`{"weight_manual":99,"proxy":{"mode":"direct"}}`, "Bearer test-auth-key")
@@ -50,6 +94,7 @@ func TestModernCredentialFiltersRunBeforePagination(t *testing.T) {
 	}{
 		{"sort=weight_desc&page_size=20", 21, 20},
 		{"proxy=direct&page_size=20", 1, 1},
+		{"credential_key=" + credentialKey + "&page_size=20", 1, 1},
 	} {
 		path := fmt.Sprintf("/api/modern/groups/%d/credentials?%s", created.GroupID, test.query)
 		recorder := serveGroupDetailLedgerRoute(t, engine, http.MethodGet, path, "", "Bearer test-auth-key")
@@ -73,6 +118,34 @@ func TestModernCredentialFiltersRunBeforePagination(t *testing.T) {
 	classic := serveGroupDetailLedgerRoute(t, engine, http.MethodGet,
 		fmt.Sprintf("/api/groups/%d/credentials?proxy=direct", created.GroupID), "", "Bearer test-auth-key")
 	assertGroupDetailLedgerEnvelope(t, classic, http.StatusBadRequest, "")
+	for _, query := range []string{"credential_key=0", "credential_key=abc", "credential_key=" + credentialKey + "&credential_key=" + credentialKey, "credential_id=1"} {
+		recorder := serveGroupDetailLedgerRoute(t, engine, http.MethodGet,
+			fmt.Sprintf("/api/modern/groups/%d/credentials?%s", created.GroupID, query), "", "Bearer test-auth-key")
+		assertGroupDetailLedgerEnvelope(t, recorder, http.StatusBadRequest, "")
+	}
+	otherGroup, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
+		Name: stringPointer("other-group"), ChannelID: channel.OpenAI,
+		Params: json.RawMessage(`{}`), Models: optionalGroupModels{Set: true},
+		Credentials: "sk-other-group", ConnectionType: "api_key", ConfirmSameTarget: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := serveGroupDetailLedgerRoute(t, engine, http.MethodGet,
+		fmt.Sprintf("/api/modern/groups/%d/credentials?credential_key=%s", otherGroup.GroupID, credentialKey), "", "Bearer test-auth-key")
+	assertGroupDetailLedgerEnvelope(t, foreign, http.StatusOK, "")
+	var foreignEnvelope struct {
+		Data CredentialCollectionResponse `json:"data"`
+	}
+	if err := json.Unmarshal(foreign.Body.Bytes(), &foreignEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if foreignEnvelope.Data.Pagination.TotalItems != 0 || len(foreignEnvelope.Data.Items) != 0 {
+		t.Fatal("credential filter leaked a credential from another group")
+	}
+	classicExact := serveGroupDetailLedgerRoute(t, engine, http.MethodGet,
+		fmt.Sprintf("/api/groups/%d/credentials?credential_key=%s", created.GroupID, credentialKey), "", "Bearer test-auth-key")
+	assertGroupDetailLedgerEnvelope(t, classicExact, http.StatusBadRequest, "")
 }
 
 func TestModernCredentialRoutesLoadActivity(t *testing.T) {

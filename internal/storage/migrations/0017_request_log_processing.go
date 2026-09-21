@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const ID0017 = "0017_request_log_processing"
+const IDRequestLogProcessing = "0022_request_log_processing"
 
 const requestLogStatusExpression0017 = "status IN ('processing','success','error','incomplete','canceled')"
 
@@ -19,8 +19,8 @@ type requestLogProcessing0017 struct {
 
 func (requestLogProcessing0017) TableName() string { return "request_logs" }
 
-func Up0017(db *gorm.DB) error {
-	if err := ValidateRecoverable0017(db); err != nil {
+func UpRequestLogProcessing(db *gorm.DB) error {
+	if err := ValidateRecoverableRequestLogProcessing(db); err != nil {
 		return err
 	}
 	if !db.Migrator().HasColumn("request_logs", "started_at_ms") {
@@ -61,18 +61,18 @@ func Up0017(db *gorm.DB) error {
 			return fmt.Errorf("create request log start index: %w", err)
 		}
 	}
-	return Validate0017(db)
+	return ValidateRequestLogProcessing(db)
 }
 
-func ValidateRecoverable0017(db *gorm.DB) error {
+func ValidateRecoverableRequestLogProcessing(db *gorm.DB) error {
 	if !db.Migrator().HasTable("request_logs") {
 		return fmt.Errorf("request log processing: request_logs table is missing")
 	}
 	return nil
 }
 
-func Validate0017(db *gorm.DB) error {
-	if err := ValidateRecoverable0017(db); err != nil {
+func ValidateRequestLogProcessing(db *gorm.DB) error {
+	if err := ValidateRecoverableRequestLogProcessing(db); err != nil {
 		return err
 	}
 	if !db.Migrator().HasColumn("request_logs", "started_at_ms") {

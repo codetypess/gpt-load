@@ -88,6 +88,18 @@ func (s *Server) HTTPModule() httproute.Module {
 			),
 			controlRoute("control.channels.list", http.MethodGet, "/channels", s.handleListChannels),
 			controlRoute("control.models.list", http.MethodGet, "/models", s.handleListProjectModels),
+			controlRoute("control.models.profile.get", http.MethodGet, "/models/profile", s.handleGetClientModelProfile),
+			controlRoute(
+				"control.models.profile.update",
+				http.MethodPut,
+				"/models/profile",
+				s.auditMutation(newMutationDescriptor(
+					"client_model_profile_update",
+					"client_model",
+					staticMutationLocator("client-model:unknown"),
+				)),
+				s.handleUpdateClientModelProfile,
+			),
 			controlRoute(
 				"control.model-prices.detail",
 				http.MethodGet,
@@ -180,6 +192,7 @@ func (s *Server) HTTPModule() httproute.Module {
 			controlRoute("control.system.update", http.MethodGet, "/system/update", s.handleSystemUpdate),
 			controlRoute("control.modern.groups", http.MethodGet, "/modern/groups", s.handleListModernGroups),
 			controlRoute("control.modern.groups.usage", http.MethodGet, "/modern/groups/usage", s.handleModernGroupUsage),
+			controlRoute("control.modern.credentials.options", http.MethodGet, "/modern/credentials/options", s.handleModernCredentialOptions),
 			controlRoute("control.modern.credentials.list", http.MethodGet, "/modern/groups/:group_id/credentials", s.handleListModernCredentials),
 			controlRoute("control.modern.credentials.get", http.MethodGet, "/modern/groups/:group_id/credentials/:credential_id", s.handleGetModernCredential),
 			controlRoute(
@@ -280,6 +293,7 @@ func (s *Server) HTTPModule() httproute.Module {
 				"/groups/:group_id/credentials/:credential_id",
 				s.handleGetGroupCredential,
 			),
+			controlRoute("control.group-credentials.quota-history", http.MethodGet, "/groups/:group_id/credentials/:credential_id/quota-history", s.handleCredentialQuotaHistory),
 			controlRoute(
 				"control.group-credentials.observation-refresh",
 				http.MethodPost,

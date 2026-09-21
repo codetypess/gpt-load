@@ -1,4 +1,7 @@
+import { enUS as autoModel } from '../auto-model'
+
 export default {
+  autoModel,
   settings: {
     frontend: {
       title: 'Interface',
@@ -10,8 +13,8 @@ export default {
       blocked: 'Save or discard your changes and wait for any ongoing operations before switching.',
       saveFailed: 'Unable to save your preference. Allow browser storage for this site and retry.',
       modern: {
-        title: 'New',
-        description: 'A new management interface, currently under development.',
+        title: 'Modern',
+        description: 'A modern management interface with sidebar navigation.',
       },
       classic: {
         title: 'Classic',
@@ -49,6 +52,7 @@ export default {
       reliability: 'Retries and credential health',
       browserAccess: 'Headers and CORS',
       dataMaintenance: 'Data and maintenance',
+      experimental: 'Experimental features',
       system: 'System information',
     },
     validation: {

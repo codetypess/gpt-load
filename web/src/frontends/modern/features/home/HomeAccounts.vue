@@ -2,10 +2,13 @@
 import ConcurrencyControl from '@modern/features/concurrency/ConcurrencyControl.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 import type { HomeAccount } from '@modern/api/home'
 import type { CredentialQuota } from '@modern/api/credential-observation'
+import type { GroupRow } from '@modern/api/groups'
 import {
   AppButton,
+  AppChannelIcon,
   AppOverflowText,
   AppPanel,
   AppProgressBar,
@@ -22,7 +25,12 @@ import {
   sortedQuotaWindows,
 } from '@modern/features/groups/credential-presentation'
 
-const props = defineProps<{ accounts: HomeAccount[]; failed: boolean; loading: boolean }>()
+const props = defineProps<{
+  accounts: HomeAccount[]
+  groups: ReadonlyMap<number, GroupRow>
+  failed: boolean
+  loading: boolean
+}>()
 defineEmits<{ retry: [] }>()
 const { t, te, n, locale } = useI18n()
 const now = useClock()
@@ -62,8 +70,18 @@ const rows = computed(() =>
     const window = tightest(windows)
     const quota = window ? remaining(window) : undefined
     return {
+      key: account.key,
       id: account.credential.id,
-      name: account.credential.account || account.credential.mask || account.channelName,
+      to: {
+        name: account.groups === 1 && account.groupID ? 'modern-group-detail' : 'modern-groups',
+        ...(account.groups === 1 && account.groupID ? { params: { id: account.groupID } } : {}),
+        query: { credential_key: account.key },
+      },
+      name: account.credential.account || account.channelName,
+      channelIcon: account.channelIcon,
+      channelMark: account.channelMark,
+      channelName: account.channelName,
+      groupName: account.groupID ? props.groups.get(account.groupID)?.name : undefined,
       plan: observation?.plan || account.channelName,
       windows,
       remaining: quota,
@@ -84,9 +102,19 @@ const rows = computed(() =>
       {{ t(loading ? 'ui.loading' : 'home.noRecentAccounts') }}
     </p>
     <ul v-if="accounts.length" class="modern-home-accounts">
-      <li v-for="row in rows" :key="row.id">
+      <li v-for="row in rows" :key="row.key">
         <div class="modern-home-account-head">
-          <AppOverflowText class="modern-home-account-name" :text="row.name" />
+          <AppChannelIcon
+            :icon="row.channelIcon"
+            :mark="row.channelMark"
+            :name="row.channelName"
+            :group-name="row.groupName"
+            size="sm"
+            class="modern-home-account-channel"
+          />
+          <AppButton as-child variant="text" size="xs" class="modern-home-account-name">
+            <RouterLink :to="row.to"><AppOverflowText :text="row.name" /></RouterLink>
+          </AppButton>
           <AppOverflowText class="modern-home-account-plan" :text="row.plan" />
           <span
             class="modern-home-account-percent"
@@ -153,6 +181,9 @@ const rows = computed(() =>
   color: var(--modern-text);
   font-size: var(--modern-font-size-secondary);
 }
+.modern-home-account-channel {
+  align-self: center;
+}
 .modern-home-account-quotas {
   display: grid;
   grid-auto-flow: column;
@@ -163,6 +194,7 @@ const rows = computed(() =>
 .modern-home-account-name {
   flex: 0 1 auto;
   max-width: 52%;
+  min-width: 0;
 }
 .modern-home-account-plan {
   flex: 1;

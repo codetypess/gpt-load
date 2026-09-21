@@ -16,6 +16,7 @@ import { zhCN as groupCreate } from './group-create'
 import { zhCN as modelSelection } from './model-selection'
 import { zhCN as modelManager } from './model-manager'
 import { zhCN as settingsForm } from './settings-form'
+import { zhCN as autoModel } from './auto-model'
 import { zhCN as subscriptions } from './subscriptions'
 
 export default {
@@ -35,6 +36,7 @@ export default {
   modelSelection,
   modelManager,
   settingsForm,
+  autoModel,
   groupCreate,
   ui,
   ...groupMessages,
@@ -141,7 +143,7 @@ export default {
     description: '切换后重新加载，仅影响当前浏览器。',
     current: '当前界面',
     saveFailed: '无法保存界面偏好，请允许本站使用浏览器存储后重试。',
-    modern: { title: '新版' },
+    modern: { title: '现代版' },
     classic: { title: '经典版' },
   },
 }

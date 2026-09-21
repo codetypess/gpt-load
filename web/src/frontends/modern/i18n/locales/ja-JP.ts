@@ -16,6 +16,7 @@ import { jaJP as groupCreate } from './group-create'
 import { jaJP as modelSelection } from './model-selection'
 import { jaJP as modelManager } from './model-manager'
 import { jaJP as settingsForm } from './settings-form'
+import { jaJP as autoModel } from './auto-model'
 import { jaJP as subscriptions } from './subscriptions'
 
 export default {
@@ -35,6 +36,7 @@ export default {
   modelSelection,
   modelManager,
   settingsForm,
+  autoModel,
   groupCreate,
   ui,
   ...groupMessages,
@@ -144,7 +146,7 @@ export default {
     description: '切り替えると再読み込みされ、このブラウザにのみ適用されます。',
     current: '現在の画面',
     saveFailed: '設定を保存できません。このサイトのブラウザストレージを許可してください。',
-    modern: { title: '新版' },
+    modern: { title: 'モダン版' },
     classic: { title: 'クラシック版' },
   },
 }

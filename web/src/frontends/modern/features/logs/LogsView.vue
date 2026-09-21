@@ -67,13 +67,13 @@ const query = useQuery(
   computed(() => {
     const filters = { ...state.value.filters }
     const preset = state.value.preset
-    const cursor = state.value.history.at(-1)
+    const page = state.value.page
     return {
-      queryKey: [...logsKey, admin.value, filters, preset ?? null, cursor ?? null],
+      queryKey: [...logsKey, admin.value, filters, preset ?? null, page],
       queryFn: ({ signal }: { signal: AbortSignal }) => {
         // URL 保存相对预设，实际请求（包括页面重新可见）始终按当前时间解析。
         range.value = resolveTimeRange({ ...filters, preset })
-        return getLogs(client, { ...filters, ...range.value }, cursor, signal)
+        return getLogs(client, { ...filters, ...range.value }, page, signal)
       },
       placeholderData: keepPreviousData,
     }
@@ -94,8 +94,12 @@ const keys = useQuery({
   queryFn: ({ signal }) => getLogAccessKeys(client, signal),
   enabled: admin,
 })
-const groupMap = computed(() => new Map(groups.data.value?.items.map((row) => [row.id, row])))
-const channelMap = computed(() => new Map(channels.data.value?.map((row) => [row.id, row])))
+const groupMap = computed(
+  () => groups.data.value && new Map(groups.data.value.items.map((row) => [row.id, row])),
+)
+const channelMap = computed(
+  () => channels.data.value && new Map(channels.data.value.map((row) => [row.id, row])),
+)
 const rows = computed(() => query.data.value?.items ?? [])
 const models = computed(() => [
   ...new Set([
@@ -109,11 +113,7 @@ const states = computed(() =>
     label: t(value ? 'logs.values.' + value : 'logs.all'),
   })),
 )
-const requestIdentity = computed(() => JSON.stringify([state.value.filters, state.value.history]))
-const nextCursor = computed(() => query.data.value?.next_cursor)
-const hasNext = computed(() =>
-  Boolean(nextCursor.value && !state.value.history.includes(nextCursor.value)),
-)
+const requestIdentity = computed(() => JSON.stringify([state.value.filters, state.value.page]))
 
 function applyFilters(input: LogQuery, preset: DateRangePreset | undefined): void {
   const filters = { ...input }
@@ -126,7 +126,7 @@ function applyFilters(input: LogQuery, preset: DateRangePreset | undefined): voi
     preset === state.value.preset
   )
     return
-  state.value = { ...state.value, filters, preset, history: [] }
+  state.value = { ...state.value, filters, preset, page: 1 }
   frame.value?.scrollToTop()
 }
 function submitFilters(filters: LogQuery, preset: DateRangePreset | undefined): void {
@@ -152,12 +152,9 @@ function setMore(value: boolean): void {
 function showDetail(id = ''): void {
   state.value = { ...state.value, detail: id }
 }
-function page(direction: -1 | 1): void {
+function changePage(value: number): void {
   if (query.isFetching.value) return
-  if (direction < 0 && state.value.history.length)
-    state.value = { ...state.value, history: state.value.history.slice(0, -1) }
-  else if (direction > 0 && hasNext.value)
-    state.value = { ...state.value, history: [...state.value.history, nextCursor.value!] }
+  state.value = { ...state.value, page: value }
   frame.value?.scrollToTop()
 }
 function pageSize(value: number): void {
@@ -179,19 +176,21 @@ function reset(key?: string): void {
 }
 function filterValue(key: string, value: string): string {
   if (key === 'group_id')
-    return groupMap.value.get(Number(value))?.name ?? t('logs.unavailableGroup')
-  if (key === 'access_key_id')
-    return (
-      keys.data.value?.find((row) => String(row.id) === value)?.name ??
-      rows.value.find((row) => String(row.access_key.id) === value)?.access_key.name ??
-      t('logs.unavailableAccessKey')
-    )
+    return groupMap.value?.get(Number(value))?.name ?? (groupMap.value ? t('logs.deleted') : '—')
+  if (key === 'access_key_id') {
+    const key = keys.data.value?.find((row) => String(row.id) === value)
+    const loggedKey = rows.value.find((row) => String(row.access_key.id) === value)?.access_key
+    if (key || (loggedKey && !loggedKey.deleted))
+      return key?.name || loggedKey?.name || t('logs.unavailableAccessKey')
+    return keys.data.value || loggedKey?.deleted ? t('logs.deleted') : '—'
+  }
   if (key === 'credential_id')
     return (
       rows.value.find((row) => String(row.credential_id) === value)?.credential_name ||
       t('logs.selectedCredential')
     )
-  if (key === 'channel_id') return channelMap.value.get(value)?.name ?? t('logs.deleted')
+  if (key === 'channel_id')
+    return channelMap.value?.get(value)?.name ?? (channelMap.value ? t('logs.deleted') : '—')
   if (key === 'protocol') return protocolLabel(value, t)
   if (key.startsWith('cost_') && key.endsWith('_nano_usd')) return '$' + nanoToUSD(value)
   if ((key === 'stream' || key === 'cache_present') && (value === 'true' || value === 'false'))
@@ -261,9 +260,9 @@ useMessageSource(() =>
       :preset="state.preset"
       :more="state.more"
       :admin="admin"
-      :groups="groups.data.value?.items ?? []"
-      :channels="channels.data.value ?? []"
-      :access-keys="keys.data.value ?? []"
+      :groups="groups.data.value?.items"
+      :channels="channels.data.value"
+      :access-keys="keys.data.value"
       :models="models"
       :groups-loading="admin && groups.isFetching.value"
       :keys-loading="admin && keys.isFetching.value"
@@ -396,14 +395,12 @@ useMessageSource(() =>
       </article>
       <template #footer
         ><AppPagination
-          mode="cursor"
-          :page="state.history.length + 1"
+          mode="total"
+          :page="state.page"
           :page-size="Number(state.filters.limit)"
-          :has-previous="state.history.length > 0"
-          :has-next="hasNext"
+          :total="query.data.value?.pagination.total_items"
           :pending="query.isFetching.value"
-          @previous="page(-1)"
-          @next="page(1)"
+          @update:page="changePage"
           @update:page-size="pageSize"
       /></template>
     </AppListFrame>

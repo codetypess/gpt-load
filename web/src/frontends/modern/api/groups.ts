@@ -21,6 +21,8 @@ export interface GroupFilters {
   channel: string
   connection: '' | 'api_key' | 'subscription'
   model: string
+  credential: string
+  protocol: string
   sort: (typeof groupSorts)[number]
 }
 export interface CredentialCounts {
@@ -51,6 +53,7 @@ export interface GroupRow {
   lastActiveHourRequests: number
 }
 export interface GroupWorkspace {
+  autoModels?: string[]
   observedAt: number
   items: GroupRow[]
 }
@@ -67,6 +70,33 @@ export type GroupBasicsPatch = Partial<{
   price_multiplier: string
 }>
 export const groupQueryKey = ['modern', 'groups', 'workspace'] as const
+export const credentialOptionsKey = ['modern', 'credential-options'] as const
+
+export interface CredentialOption {
+  key: string
+  channelID: string
+  label: string
+  groupIDs: number[]
+}
+
+export function readCredentialFilterKey(value: unknown): string {
+  const key = text(value)
+  if (!/^[a-f0-9]{64}$/u.test(key)) throw new InvalidResponseError()
+  return key
+}
+
+export async function getCredentialOptions(client: ApiClient, signal: AbortSignal) {
+  const data = record(await client.request('/api/modern/credentials/options', { signal }))
+  return list(data.items).map((value): CredentialOption => {
+    const option = record(value)
+    return {
+      key: readCredentialFilterKey(option.key),
+      channelID: text(option.channel_id),
+      label: text(option.label),
+      groupIDs: list(option.group_ids).map((value) => integer(value, 1)),
+    }
+  })
+}
 
 export async function deleteGroup(
   client: ApiClient,
@@ -122,7 +152,11 @@ export async function getGroupWorkspace(
     }
   })
   if (new Set(items.map((item) => item.id)).size !== items.length) throw new InvalidResponseError()
-  return { observedAt: integer(data.observed_at_ms), items }
+  return {
+    observedAt: integer(data.observed_at_ms),
+    autoModels: data.auto_models === undefined ? [] : list(data.auto_models).map(text),
+    items,
+  }
 }
 
 export async function getGroupModelNames(client: ApiClient, id: number, signal: AbortSignal) {

@@ -109,6 +109,11 @@ var migrations = []migration{
 	{ID: migrationfiles.ID0016, Up: migrationfiles.Up0016, Validate: migrationfiles.Validate0016, ValidateRecoverable: migrationfiles.ValidateRecoverable0016},
 	{ID: migrationfiles.ID0017, Up: migrationfiles.Up0017, Validate: migrationfiles.Validate0017, ValidateRecoverable: migrationfiles.ValidateRecoverable0017},
 	{ID: migrationfiles.ID0018, Up: migrationfiles.Up0018, Validate: migrationfiles.Validate0018, ValidateRecoverable: migrationfiles.ValidateRecoverable0018},
+	{ID: migrationfiles.ID0019, Up: migrationfiles.Up0019, Validate: migrationfiles.Validate0019, ValidateRecoverable: migrationfiles.ValidateRecoverable0019},
+	{ID: migrationfiles.ID0020, Up: migrationfiles.Up0020, Validate: migrationfiles.Validate0020, ValidateRecoverable: migrationfiles.ValidateRecoverable0020},
+	{ID: migrationfiles.IDConcurrency, Up: migrationfiles.UpConcurrency, Validate: migrationfiles.ValidateConcurrency, ValidateRecoverable: migrationfiles.ValidateRecoverableConcurrency},
+	{ID: migrationfiles.IDRequestLogProcessing, Up: migrationfiles.UpRequestLogProcessing, Validate: migrationfiles.ValidateRequestLogProcessing, ValidateRecoverable: migrationfiles.ValidateRecoverableRequestLogProcessing},
+	{ID: migrationfiles.IDAccessKeyCostLimitPeriodAnchor, Up: migrationfiles.UpAccessKeyCostLimitPeriodAnchor, Validate: migrationfiles.ValidateAccessKeyCostLimitPeriodAnchor, ValidateRecoverable: migrationfiles.ValidateRecoverableAccessKeyCostLimitPeriodAnchor},
 }
 
 func applyMigrations(db *gorm.DB) error {
@@ -230,7 +235,7 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 // and policies, then let the normal runner apply the index and register 0016.
 func rebaseLegacyConcurrencyMigration(db *gorm.DB, entries []migration, applied []string) ([]string, error) {
 	const legacyID = "0015_concurrency"
-	if len(entries) < 16 || entries[14].ID != migrationfiles.ID0015 || entries[15].ID != migrationfiles.ID0016 || len(applied) != 15 {
+	if len(entries) < 15 || entries[14].ID != migrationfiles.ID0015 || len(applied) != 15 {
 		return applied, nil
 	}
 	legacy := applied[14]
@@ -242,9 +247,9 @@ func rebaseLegacyConcurrencyMigration(db *gorm.DB, entries []migration, applied 
 			return applied, nil // Leave unrelated ledger errors to the normal validator.
 		}
 	}
-	validate := migrationfiles.Validate0016
+	validate := migrationfiles.ValidateConcurrency
 	if legacy != legacyID {
-		validate = migrationfiles.ValidateRecoverable0016
+		validate = migrationfiles.ValidateRecoverableConcurrency
 	}
 	if err := validate(db); err != nil {
 		return nil, fmt.Errorf("validate legacy concurrency migration: %w", err)

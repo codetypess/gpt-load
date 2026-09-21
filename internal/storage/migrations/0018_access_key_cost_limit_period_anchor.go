@@ -7,15 +7,15 @@ import (
 	"gorm.io/gorm"
 )
 
-const ID0018 = "0018_access_key_cost_limit_period_anchor"
+const IDAccessKeyCostLimitPeriodAnchor = "0023_access_key_cost_limit_period_anchor"
 
 const (
 	accessKeyCostLimitRuleTable0018 = "access_key_cost_limit_rules"
 	periodAnchorConstraint0018      = "chk_ak_cost_rule_anchor"
 )
 
-func Up0018(db *gorm.DB) error {
-	if err := ValidateRecoverable0018(db); err != nil {
+func UpAccessKeyCostLimitPeriodAnchor(db *gorm.DB) error {
+	if err := ValidateRecoverableAccessKeyCostLimitPeriodAnchor(db); err != nil {
 		return err
 	}
 	isSQLite := strings.EqualFold(db.Dialector.Name(), "sqlite")
@@ -43,10 +43,10 @@ func Up0018(db *gorm.DB) error {
 			return fmt.Errorf("add access key cost limit period anchor constraint: %w", err)
 		}
 	}
-	return Validate0018(db)
+	return ValidateAccessKeyCostLimitPeriodAnchor(db)
 }
 
-func ValidateRecoverable0018(db *gorm.DB) error {
+func ValidateRecoverableAccessKeyCostLimitPeriodAnchor(db *gorm.DB) error {
 	if !db.Migrator().HasTable(accessKeyCostLimitRuleTable0018) {
 		return fmt.Errorf("access key cost limit period anchor: rules table is missing")
 	}
@@ -63,8 +63,8 @@ func ValidateRecoverable0018(db *gorm.DB) error {
 	return nil
 }
 
-func Validate0018(db *gorm.DB) error {
-	if err := ValidateRecoverable0018(db); err != nil {
+func ValidateAccessKeyCostLimitPeriodAnchor(db *gorm.DB) error {
+	if err := ValidateRecoverableAccessKeyCostLimitPeriodAnchor(db); err != nil {
 		return err
 	}
 	for _, column := range []string{"period_anchor", "period_timezone"} {

@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const ID0016 = "0016_concurrency"
+const IDConcurrency = "0021_concurrency"
 
 type concurrencyPolicy0016 struct {
 	Subject        string `gorm:"type:varchar(255);primaryKey;not null"`
@@ -16,8 +16,8 @@ type concurrencyPolicy0016 struct {
 
 func (concurrencyPolicy0016) TableName() string { return "concurrency_policies" }
 
-func Up0016(db *gorm.DB) error {
-	if err := ValidateRecoverable0016(db); err != nil {
+func UpConcurrency(db *gorm.DB) error {
+	if err := ValidateRecoverableConcurrency(db); err != nil {
 		return err
 	}
 	if !db.Migrator().HasTable(&concurrencyPolicy0016{}) {
@@ -25,17 +25,17 @@ func Up0016(db *gorm.DB) error {
 			return err
 		}
 	}
-	return Validate0016(db)
+	return ValidateConcurrency(db)
 }
 
-func ValidateRecoverable0016(db *gorm.DB) error {
+func ValidateRecoverableConcurrency(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&concurrencyPolicy0016{}) {
 		return nil
 	}
-	return Validate0016(db)
+	return ValidateConcurrency(db)
 }
 
-func Validate0016(db *gorm.DB) error {
+func ValidateConcurrency(db *gorm.DB) error {
 	columns, err := db.Migrator().ColumnTypes(&concurrencyPolicy0016{})
 	if err != nil {
 		return err

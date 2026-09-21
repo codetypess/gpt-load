@@ -16,6 +16,7 @@ import { enUS as groupCreate } from './group-create'
 import { enUS as modelSelection } from './model-selection'
 import { enUS as modelManager } from './model-manager'
 import { enUS as settingsForm } from './settings-form'
+import { enUS as autoModel } from './auto-model'
 import { enUS as subscriptions } from './subscriptions'
 
 export default {
@@ -35,6 +36,7 @@ export default {
   modelSelection,
   modelManager,
   settingsForm,
+  autoModel,
   groupCreate,
   ui,
   ...groupMessages,
@@ -145,7 +147,7 @@ export default {
     description: 'Reloads the page and applies only to this browser.',
     current: 'Current interface',
     saveFailed: 'Unable to save your preference. Allow browser storage for this site and retry.',
-    modern: { title: 'New' },
+    modern: { title: 'Modern' },
     classic: { title: 'Classic' },
   },
 }
