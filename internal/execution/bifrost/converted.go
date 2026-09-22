@@ -652,7 +652,7 @@ func (r *Runtime) executeConvertedResponsesStream(
 	encoder := newConvertedResponsesStreamEncoder(prepared.clientProtocol)
 	encoder.anthropicSource = wireUsage != nil
 	sequence := uint64(1)
-	model := spec.UpstreamModel
+	model := ""
 	var usageEvidence *execution.UsageEvidence
 	idleTimer := newIdleTimer(spec.Timeouts.StreamIdle)
 	defer idleTimer.stop()

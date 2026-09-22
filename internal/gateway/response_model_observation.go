@@ -93,7 +93,7 @@ func safeInspectResponseModels(
 }
 
 func applyResponseModelObservation(result *UpstreamResult, observation responseModelObservation) {
-	if result == nil {
+	if result == nil || !observation.observed || observation.reported == "" {
 		return
 	}
 	result.UpstreamReportedModel = observation.reported

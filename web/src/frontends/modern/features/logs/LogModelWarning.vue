@@ -16,10 +16,10 @@ const title = computed(() =>
 const description = computed(() =>
   mismatch.value
     ? t('logs.returnedModelMismatchHint', {
-        requested: props.row.upstream_model || '—',
+        requested: props.row.client_model || '—',
         returned: props.row.upstream_reported_model || t('logs.modelNotObserved'),
       })
-    : t('logs.returnedModelUnknownHint', { requested: props.row.upstream_model || '—' }),
+    : t('logs.returnedModelUnknownHint', { requested: props.row.client_model || '—' }),
 )
 </script>
 

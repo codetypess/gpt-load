@@ -114,8 +114,7 @@ func TestExecutionForwarderBuildsFrozenAttemptAndMapsUnaryResult(t *testing.T) {
 			ResponseStarted:   true,
 			StatusCode:        http.StatusOK,
 			Header:            http.Header{"X-Request-Id": {"upstream-1"}},
-			Body:              []byte(`{"ok":true}`),
-			Model:             "upstream",
+			Body:              []byte(`{"ok":true,"model":"served"}`),
 			UpstreamRequestID: "upstream-1",
 			Usage:             &execution.UsageEvidence{Normalized: wantUsage},
 		}
@@ -123,9 +122,10 @@ func TestExecutionForwarderBuildsFrozenAttemptAndMapsUnaryResult(t *testing.T) {
 
 	result := NewExecutionForwarder(executor).Forward(context.Background(), executionForwardInput())
 	if result.Err != nil || result.StatusCode != http.StatusOK ||
-		string(result.Body) != `{"ok":true}` || !reflect.DeepEqual(result.Usage, wantUsage) ||
+		string(result.Body) != `{"model":"public","ok":true}` || !reflect.DeepEqual(result.Usage, wantUsage) ||
 		result.DispatchState != execution.DispatchMaybeSent || !result.ResponseStarted ||
-		result.UpstreamRequestID != "upstream-1" || result.UpstreamReportedModel != "upstream" {
+		result.UpstreamRequestID != "upstream-1" || result.UpstreamReportedModel != "served" ||
+		!result.ResponseModelObserved || !result.ResponseModelMismatch {
 		t.Fatalf("Forward() = %#v", result)
 	}
 }

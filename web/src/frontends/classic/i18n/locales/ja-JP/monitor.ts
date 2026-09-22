@@ -634,7 +634,7 @@ export default {
         anyGroup: 'すべての試行グループ',
         model: 'クライアントモデル',
         clientModel: 'クライアントモデル',
-        upstreamModel: 'いずれかの試行のアップストリームモデル',
+        upstreamModel: 'アップストリーム応答モデル',
         accessKey: 'アクセスキー',
         anyAccessKey: 'すべてのアクセスキー',
         protocol: 'プロトコル',
@@ -668,7 +668,7 @@ export default {
         appliedGroup: '試行グループ {value}',
         appliedModel: 'クライアントモデル {value}',
         appliedClientModel: 'クライアントモデル {value}',
-        appliedUpstreamModel: '試行アップストリームモデル {value}',
+        appliedUpstreamModel: 'アップストリーム応答モデル {value}',
         appliedAccessKey: 'アクセスキー {value}',
         appliedChannel: 'チャネル {value}',
         appliedCredential: 'クレデンシャル #{value}',
@@ -903,7 +903,7 @@ export default {
         subsequentAttemptOccurred: '実行済み',
         noSubsequentAttempt: 'なし',
         modelObservation: 'アップストリーム応答モデルの観測',
-        requestedModel: 'アップストリーム要求モデル',
+        requestedModel: 'クライアント要求モデル',
         reportedModel: 'アップストリーム応答モデル',
         usage: {
           title: '使用量・コスト',
@@ -977,11 +977,11 @@ export default {
       modelConsistency: {
         notObserved: '未観測',
         unknownLabel: 'アップストリームの応答モデルを観測できませんでした',
-        mismatchLabel: 'モデル不一致',
+        mismatchLabel: 'モデルルーティングを検出',
         unknownTooltip:
-          'アップストリーム要求モデル：{upstream}\nアップストリーム応答モデル：未観測\n通知：アップストリームの応答モデルを観測できませんでした',
+          'クライアント要求モデル：{client}\nアップストリーム応答モデル：未観測\n通知：upstream_model はクライアント要求モデルにフォールバックしました',
         mismatchTooltip:
-          'アップストリーム要求モデル：{upstream}\nアップストリーム応答モデル：{reported}\n警告：モデル不一致',
+          'クライアント要求モデル：{client}\nアップストリーム応答モデル：{upstream}\n通知：モデルが異なるため、上流でルーティングされた可能性があります',
       },
       reasoning: {
         compact: '[{value}]',

@@ -202,6 +202,10 @@ func mapEvent(
 		CostState:                   pricingObservation.CostState,
 		PricingCompleteness:         pricingObservation.PricingCompleteness,
 		AttemptRows:                 attempts,
+		PricingUpstreamModel: redactIdentityValue(
+			redactor,
+			projectModel(pricingObservation.UpstreamModel),
+		),
 	}, nil
 }
 
@@ -232,12 +236,13 @@ func validateModelObservation(event telemetry.RequestEvent) error {
 	case telemetry.ModelConsistencyMatch:
 		if !successfulModeledRequest || event.UpstreamReportedModel == "" ||
 			event.UpstreamReportedModel != event.UpstreamModel {
-			return fmt.Errorf("matching observation requires identical upstream and reported models")
+			return fmt.Errorf("matching observation requires the observed upstream model")
 		}
 	case telemetry.ModelConsistencyMismatch:
 		if !successfulModeledRequest || event.UpstreamReportedModel == "" ||
-			event.UpstreamReportedModel == event.UpstreamModel {
-			return fmt.Errorf("mismatching observation requires distinct upstream and reported models")
+			(event.UpstreamReportedModel == event.UpstreamModel &&
+				event.ClientModel == event.UpstreamModel) {
+			return fmt.Errorf("mismatching observation requires distinct model identities")
 		}
 	default:
 		return fmt.Errorf("invalid model consistency state %q", event.ModelConsistency)
@@ -363,8 +368,7 @@ func validateFrozenObservation(event telemetry.RequestEvent) error {
 	if !validRawModelOrEmpty(boundModel) || !validRawModelOrEmpty(event.UpstreamModel) {
 		return fmt.Errorf("invalid selected upstream model")
 	}
-	if event.UpstreamModel != boundModel ||
-		pricingObservation.UpstreamModel != boundModel {
+	if pricingObservation.UpstreamModel != boundModel {
 		return fmt.Errorf("inconsistent bound upstream model")
 	}
 	return nil

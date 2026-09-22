@@ -694,14 +694,14 @@ function toggleAttemptErrorMessage(sequence: number): void {
             <div>
               <dt>{{ t('monitor.logs.drawer.requestedModel') }}</dt>
               <dd>
-                <code>{{ log.upstream_model ?? '—' }}</code>
+                <code>{{ log.client_model ?? '—' }}</code>
               </dd>
             </div>
             <div>
               <dt>{{ t('monitor.logs.drawer.reportedModel') }}</dt>
               <dd>
                 <code>{{
-                  log.upstream_reported_model ?? t('monitor.logs.modelConsistency.notObserved')
+                  log.upstream_model ?? t('monitor.logs.modelConsistency.notObserved')
                 }}</code>
               </dd>
             </div>

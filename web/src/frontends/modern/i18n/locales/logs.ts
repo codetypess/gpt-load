@@ -8,9 +8,10 @@ export const zhCN = {
     modelRequest: '请求模型',
     modelUpstream: '上游模型',
   },
-  returnedModelMismatch: '返回模型不一致',
-  returnedModelUnknown: '返回模型未知',
-  returnedModelUnknownHint: '请求上游模型：{requested}\n上游未返回模型标识，无法确认模型是否一致。',
+  returnedModelMismatch: '检测到模型路由',
+  returnedModelUnknown: '上游响应模型未知',
+  returnedModelUnknownHint:
+    '客户端请求模型：{requested}\n上游未返回模型标识，upstream_model 已回退为客户端请求模型。',
   modelNotObserved: '未观测到',
   outputRate: '输出速度',
   affinityKinds: {
@@ -20,7 +21,8 @@ export const zhCN = {
     other: '亲和命中',
   },
   standaloneSearchHint: 'Codex 独立搜索请求',
-  returnedModelMismatchHint: '请求上游模型：{requested}\n上游返回模型：{returned}',
+  returnedModelMismatchHint:
+    '客户端请求模型：{requested}\n上游响应模型：{returned}\n两者不同，请求可能已被上游路由。',
   columnGroups: {
     group: '分组 / 渠道',
     access_key: '访问密钥 / 上游账号',
@@ -305,10 +307,10 @@ export const enUS: typeof zhCN = {
     modelRequest: 'Request model',
     modelUpstream: 'Upstream model',
   },
-  returnedModelMismatch: 'Returned model mismatch',
-  returnedModelUnknown: 'Returned model unknown',
+  returnedModelMismatch: 'Model routing detected',
+  returnedModelUnknown: 'Upstream response model unknown',
   returnedModelUnknownHint:
-    'Requested upstream model: {requested}\nThe upstream did not report a model identifier, so consistency cannot be verified.',
+    'Client requested model: {requested}\nThe upstream did not report a model identifier, so upstream_model fell back to the client requested model.',
   modelNotObserved: 'Not observed',
   outputRate: 'Output speed',
   affinityKinds: {
@@ -319,7 +321,7 @@ export const enUS: typeof zhCN = {
   },
   standaloneSearchHint: 'Codex standalone search request',
   returnedModelMismatchHint:
-    'Requested upstream model: {requested}\nReported upstream model: {returned}',
+    'Client requested model: {requested}\nUpstream response model: {returned}\nThe models differ, so the request may have been routed upstream.',
   columnGroups: {
     group: 'Group / Channel',
     access_key: 'Access key / Upstream account',
@@ -606,10 +608,10 @@ export const jaJP: typeof zhCN = {
     modelRequest: '要求モデル',
     modelUpstream: '上流モデル',
   },
-  returnedModelMismatch: '返却モデルが不一致',
-  returnedModelUnknown: '返却モデルが不明',
+  returnedModelMismatch: 'モデルルーティングを検出',
+  returnedModelUnknown: '上流応答モデルが不明',
   returnedModelUnknownHint:
-    '要求した上流モデル：{requested}\n上流からモデル識別子が返されなかったため、一致を確認できません。',
+    'クライアント要求モデル：{requested}\n上流からモデル識別子が返されなかったため、upstream_model は要求モデルにフォールバックしました。',
   modelNotObserved: '未観測',
   outputRate: '出力速度',
   affinityKinds: {
@@ -619,7 +621,8 @@ export const jaJP: typeof zhCN = {
     other: 'アフィニティ一致',
   },
   standaloneSearchHint: 'Codex の独立検索リクエスト',
-  returnedModelMismatchHint: '要求した上流モデル：{requested}\n上流が返却したモデル：{returned}',
+  returnedModelMismatchHint:
+    'クライアント要求モデル：{requested}\n上流応答モデル：{returned}\nモデルが異なるため、上流でルーティングされた可能性があります。',
   columnGroups: {
     group: 'グループ / チャネル',
     access_key: 'アクセスキー / 上流認証',

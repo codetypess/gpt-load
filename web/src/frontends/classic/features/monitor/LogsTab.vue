@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
-import { ArrowRight, CircleHelp, Info, Layers, Magnet, Search, TriangleAlert } from '@lucide/vue'
+import { ArrowRight, CircleHelp, Layers, Magnet, Search, TriangleAlert } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -417,6 +417,10 @@ async function filterByClientModel(clientModel: string): Promise<void> {
   await commitFilters({ ...appliedFilters.value, client_model: clientModel })
 }
 
+async function filterByUpstreamModel(upstreamModel: string): Promise<void> {
+  await commitFilters({ ...appliedFilters.value, upstream_model: upstreamModel })
+}
+
 async function applyFilters(): Promise<void> {
   const errors = validateLogFilterDraft(draft.value)
   filterErrors.value = errors
@@ -606,21 +610,14 @@ function responseTooltip(log: RequestLogItemDto): string {
   return [log.error_code, log.error_summary].filter(Boolean).join(' · ')
 }
 
-function modelMappingTooltip(log: RequestLogItemDto): string {
-  return t('monitor.logs.modelMapping', {
-    client: log.client_model ?? '—',
-    upstream: log.upstream_model ?? '—',
-  })
-}
-
 function modelConsistencyTooltip(log: RequestLogItemDto): string {
   const key =
     log.model_consistency === 'mismatch'
       ? 'monitor.logs.modelConsistency.mismatchTooltip'
       : 'monitor.logs.modelConsistency.unknownTooltip'
   return t(key, {
-    upstream: log.upstream_model ?? '—',
-    reported: log.upstream_reported_model ?? t('monitor.logs.modelConsistency.notObserved'),
+    client: log.client_model ?? '—',
+    upstream: log.upstream_reported_model ?? t('monitor.logs.modelConsistency.notObserved'),
   })
 }
 
@@ -846,6 +843,19 @@ function costLabel(log: RequestLogItemDto): string {
                 {{ log.client_model }}
               </OverflowTooltip>
               <code v-else class="logs-list__model">—</code>
+              <template v-if="log.upstream_model && log.upstream_model !== log.client_model">
+                <ArrowRight class="logs-list__model-route" :size="12" aria-hidden="true" />
+                <OverflowTooltip
+                  as="button"
+                  type="button"
+                  class="logs-list__model filterable-value"
+                  :content="log.upstream_model"
+                  :aria-label="t('monitor.logs.filterModel', { name: log.upstream_model })"
+                  @click="filterByUpstreamModel(log.upstream_model)"
+                >
+                  {{ log.upstream_model }}
+                </OverflowTooltip>
+              </template>
               <OverflowTooltip
                 v-if="log.auto_decision"
                 as="small"
@@ -863,18 +873,6 @@ function costLabel(log: RequestLogItemDto): string {
               >
                 {{ reasoningLabel(log) }}
               </OverflowTooltip>
-              <AppTooltip
-                v-if="log.upstream_model && log.upstream_model !== log.client_model"
-                :content="modelMappingTooltip(log)"
-              >
-                <button
-                  type="button"
-                  class="logs-list__hint"
-                  :aria-label="t('monitor.logs.modelMappingLabel')"
-                >
-                  <Info :size="13" aria-hidden="true" />
-                </button>
-              </AppTooltip>
               <AppTooltip
                 v-if="log.model_consistency === 'unknown' || log.model_consistency === 'mismatch'"
                 :content="modelConsistencyTooltip(log)"
@@ -1192,6 +1190,12 @@ function costLabel(log: RequestLogItemDto): string {
 .logs-list__model {
   flex: 0 1 auto;
   font-family: var(--font-mono);
+}
+
+.logs-list__model-route {
+  flex: 0 0 auto;
+  margin: 0 4px;
+  color: var(--color-text-muted);
 }
 
 .logs-list__reasoning {

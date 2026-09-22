@@ -613,7 +613,7 @@ export default {
         anyGroup: '全部尝试分组',
         model: '客户端模型',
         clientModel: '客户端模型',
-        upstreamModel: '任一尝试上游模型',
+        upstreamModel: '上游响应模型',
         accessKey: '访问密钥',
         anyAccessKey: '全部访问密钥',
         protocol: '协议',
@@ -647,7 +647,7 @@ export default {
         appliedGroup: '尝试分组 {value}',
         appliedModel: '客户端模型 {value}',
         appliedClientModel: '客户端模型 {value}',
-        appliedUpstreamModel: '尝试上游模型 {value}',
+        appliedUpstreamModel: '上游响应模型 {value}',
         appliedAccessKey: '访问密钥 {value}',
         appliedChannel: '渠道 {value}',
         appliedCredential: '凭据 #{value}',
@@ -887,8 +887,8 @@ export default {
         subsequentAttemptOccurred: '已发生',
         noSubsequentAttempt: '无',
         modelObservation: '上游返回模型观测',
-        requestedModel: '上游请求模型',
-        reportedModel: '上游返回模型',
+        requestedModel: '客户端请求模型',
+        reportedModel: '上游响应模型',
         usage: {
           title: '用量成本',
           description: '最终持久化的用量字段。成本始终为预估值，未知不代表免费。',
@@ -958,11 +958,12 @@ export default {
       modelMappingLabel: '查看模型映射',
       modelConsistency: {
         notObserved: '未观察到',
-        unknownLabel: '未观察到上游返回模型',
-        mismatchLabel: '模型不一致',
+        unknownLabel: '未观察到上游响应模型',
+        mismatchLabel: '检测到模型路由',
         unknownTooltip:
-          '上游请求模型：{upstream}\n上游返回模型：未观察到\n提示：未观察到上游返回模型',
-        mismatchTooltip: '上游请求模型：{upstream}\n上游返回模型：{reported}\n告警：模型不一致',
+          '客户端请求模型：{client}\n上游响应模型：未观察到\n提示：upstream_model 已回退为客户端请求模型',
+        mismatchTooltip:
+          '客户端请求模型：{client}\n上游响应模型：{upstream}\n提示：两者不同，请求可能已被上游路由',
       },
       reasoning: {
         compact: '[{value}]',

@@ -134,7 +134,14 @@ func (recorder *requestRecorder) emit() {
 	if duration < 0 {
 		duration = 0
 	}
-	reportedModel, modelConsistency := requestOutcomeModelConsistency(recorder.outcome)
+	reportedModel, modelConsistency := requestOutcomeModelConsistency(
+		recorder.clientModel,
+		recorder.outcome,
+	)
+	upstreamModel := recorder.clientModel
+	if recorder.outcome.responseModelObserved && recorder.outcome.upstreamReportedModel != "" {
+		upstreamModel = recorder.outcome.upstreamReportedModel
+	}
 	recorder.sink.Emit(telemetry.RequestEvent{
 		AutoDecision:          recorder.autoLogDecision(),
 		RequestID:             recorder.requestID,
@@ -142,7 +149,7 @@ func (recorder *requestRecorder) emit() {
 		AccessKeyID:           recorder.accessKeyID,
 		Protocol:              recorder.protocol,
 		ClientModel:           recorder.clientModel,
-		UpstreamModel:         recorder.outcome.upstreamModel,
+		UpstreamModel:         upstreamModel,
 		UpstreamReportedModel: reportedModel,
 		ModelConsistency:      modelConsistency,
 		Status:                recorder.outcome.status,
@@ -250,15 +257,16 @@ func (recorder *requestRecorder) setAffinityHit(hit bool, kind string) {
 }
 
 func requestOutcomeModelConsistency(
+	clientModel string,
 	outcome requestOutcome,
 ) (string, telemetry.ModelConsistency) {
-	if outcome.status != telemetry.RequestStatusSuccess || outcome.upstreamModel == "" {
+	if outcome.status != telemetry.RequestStatusSuccess || clientModel == "" {
 		return "", telemetry.ModelConsistencyNotApplicable
 	}
 	if !outcome.responseModelObserved || outcome.upstreamReportedModel == "" {
 		return "", telemetry.ModelConsistencyUnknown
 	}
-	if outcome.responseModelMismatch || outcome.upstreamReportedModel != outcome.upstreamModel {
+	if outcome.upstreamReportedModel != clientModel {
 		return outcome.upstreamReportedModel, telemetry.ModelConsistencyMismatch
 	}
 	return outcome.upstreamReportedModel, telemetry.ModelConsistencyMatch

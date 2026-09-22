@@ -100,6 +100,23 @@ func TestMapEventPersistsFrozenUsagePricingAndAttribution(t *testing.T) {
 	}
 }
 
+func TestMapEventKeepsObservedAndPricingModelIdentitiesSeparate(t *testing.T) {
+	event := testEvent("observed-model-separate-from-route")
+	event.ClientModel = "client-model"
+	event.UpstreamModel = "served-model"
+	event.UpstreamReportedModel = "served-model"
+	event.ModelConsistency = telemetry.ModelConsistencyMismatch
+
+	row := mustMapEvent(t, redact.New(), event)
+	if row.ClientModel != "client-model" || row.UpstreamModel != "served-model" ||
+		row.UpstreamReportedModel != "served-model" ||
+		row.ModelConsistency != string(telemetry.ModelConsistencyMismatch) ||
+		row.PricingUpstreamModel != "upstream-model" ||
+		len(row.AttemptRows) != 1 || row.AttemptRows[0].UpstreamModel != "upstream-model" {
+		t.Fatalf("persisted model identities = %+v / %+v", row, row.AttemptRows)
+	}
+}
+
 func TestMapEventRejectsInvalidAttemptUpstreamProtocol(t *testing.T) {
 	event := testEvent("invalid-upstream-api")
 	event.Attempts[0].UpstreamProtocol = protocol.Protocol("private-sdk-name")
@@ -332,6 +349,7 @@ func TestMapEventRejectsInconsistentModelObservation(t *testing.T) {
 		}},
 		{name: "mismatch with same model", mutate: func(event *telemetry.RequestEvent) {
 			event.ModelConsistency = telemetry.ModelConsistencyMismatch
+			event.ClientModel = event.UpstreamModel
 		}},
 		{name: "not applicable with reported model", mutate: func(event *telemetry.RequestEvent) {
 			event.ModelConsistency = telemetry.ModelConsistencyNotApplicable

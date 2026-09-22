@@ -527,6 +527,42 @@ func TestServiceListFiltersModelConsistency(t *testing.T) {
 	}
 }
 
+func TestServiceListFiltersRequestLevelObservedUpstreamModel(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	base := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
+	observed := requestLogQueryRow(
+		"00000000-0000-4000-8000-000000000220",
+		base,
+		71,
+		"client-model",
+		[]Attempt{{Sequence: 1, UpstreamModel: "configured-route-model"}},
+	)
+	observed.UpstreamModel = "served-model"
+	observed.UpstreamReportedModel = "served-model"
+	observed.ModelConsistency = string(telemetry.ModelConsistencyMismatch)
+	createRequestLogQueryRow(t, db, observed)
+
+	attemptOnly := requestLogQueryRow(
+		"00000000-0000-4000-8000-000000000221",
+		base.Add(time.Second),
+		71,
+		"other-client",
+		[]Attempt{{Sequence: 1, UpstreamModel: "served-model"}},
+	)
+	createRequestLogQueryRow(t, db, attemptOnly)
+
+	page, err := newRequestLogTestService(db).List(context.Background(), ListQuery{
+		UpstreamModel: "served-model",
+		Limit:         50,
+	})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if got, want := requestIDs(page.Items), []string{observed.ID}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("observed upstream model IDs = %v, want %v", got, want)
+	}
+}
+
 func TestServiceListGroupFilterUsesAnyAttemptWhileAttributionUsesFinalGroup(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	event := testEvent("00000000-0000-4000-8000-000000000210")

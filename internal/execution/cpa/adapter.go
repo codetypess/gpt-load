@@ -20,6 +20,7 @@ import (
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/execution/responsealias"
+	"gpt-load/internal/execution/responsemodel"
 	platformredact "gpt-load/internal/platform/redact"
 	"gpt-load/internal/protocol"
 	"gpt-load/internal/reasoning"
@@ -267,7 +268,7 @@ func unaryProviderSuccess(
 	return execution.AttemptResult{
 		DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
 		UpstreamProtocol: effectiveUpstreamProtocol(provider, response.UpstreamProtocol), AppliedReasoning: appliedReasoning(response.AppliedReasoningEffort), StatusCode: statusCode,
-		Header: headers, Body: body, Model: responseModel(body, spec.UpstreamModel),
+		Header: headers, Body: body, Model: responseModel(body, ""),
 		UpstreamRequestID: upstreamRequestID(headers), Usage: observedUsage,
 	}
 }
@@ -287,7 +288,10 @@ func (a *Adapter) ExecuteStream(
 	sink execution.StreamSink,
 ) (result execution.StreamResult) {
 	spec = execution.NewAttemptSpec(spec)
+	modelObserver := responsemodel.New(spec.ClientProtocol, execution.SSEEventLimit(spec.ClientProtocol))
 	defer func() {
+		modelObserver.Finish()
+		result.Model = modelObserver.Model()
 		normalizeCPAImagesStreamResult(spec, &result)
 	}()
 	if sink == nil {
@@ -384,6 +388,7 @@ func (a *Adapter) ExecuteStream(
 	}
 	emitPayloads := func(payloads [][]byte) *execution.StreamResult {
 		for _, unframed := range payloads {
+			modelObserver.Observe(unframed)
 			payload := frameSSE(spec.ClientProtocol, unframed)
 			if spec.ClientProtocol == protocol.Anthropic && spec.RouteMode == execution.RouteConverted {
 				payload, err = normalizeConvertedAnthropicStartUsage(payload)

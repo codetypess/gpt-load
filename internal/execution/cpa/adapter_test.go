@@ -180,7 +180,7 @@ func TestAdapterExecuteStreamRecordsPassiveQuotaObservationOnHandshake(t *testin
 		t.Fatal("adapter credentials is not a *subscription.CredentialManager")
 	}
 	chunks := make(chan codex.ExecuteStreamChunk, 1)
-	chunks <- codex.ExecuteStreamChunk{Payload: []byte(`data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5"}}`)}
+	chunks <- codex.ExecuteStreamChunk{Payload: []byte(`data: {"type":"response.completed","response":{"id":"resp_1","model":"served-model"}}`)}
 	close(chunks)
 	observedAt := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
 	setCodexExecutor(t, adapter, &fakeExecutor{stream: &codex.ExecuteStreamResponse{
@@ -190,7 +190,10 @@ func TestAdapterExecuteStreamRecordsPassiveQuotaObservationOnHandshake(t *testin
 		QuotaSignals:    map[string]string{"X-Codex-Primary-Used-Percent": "55"},
 	}})
 
-	adapter.ExecuteStream(t.Context(), validSpec(t, row, keyService), func(execution.StreamEvent) error { return nil })
+	result := adapter.ExecuteStream(t.Context(), validSpec(t, row, keyService), func(execution.StreamEvent) error { return nil })
+	if result.Model != "served-model" {
+		t.Fatalf("observed stream model = %q, want served-model", result.Model)
+	}
 
 	dirty := manager.DirtyPassiveQuotaObservations(1)
 	if len(dirty) != 1 || dirty[0].ObservedAtMS != observedAt.UnixMilli() || len(dirty[0].Windows) != 1 {
@@ -210,7 +213,7 @@ func TestAdapterLeavesNonDowngradedResponsesStoreUnchanged(t *testing.T) {
 	spec.Body = []byte(`{"model":"gpt-5","input":"hello","store":true}`)
 
 	result := adapter.Execute(t.Context(), spec)
-	if result.Error != nil || !bytes.Equal(fake.request.Payload, spec.Body) ||
+	if result.Error != nil || result.Model != "" || !bytes.Equal(fake.request.Payload, spec.Body) ||
 		!bytes.Equal(result.Body, responseBody) {
 		t.Fatalf("request/result = %s / %s; error=%#v", fake.request.Payload, result.Body, result.Error)
 	}

@@ -635,7 +635,7 @@ export default {
         anyGroup: 'Any attempt Group',
         model: 'Client model',
         clientModel: 'Client model',
-        upstreamModel: 'Any-attempt upstream model',
+        upstreamModel: 'Upstream response model',
         accessKey: 'Access key',
         anyAccessKey: 'Any access key',
         protocol: 'Protocol',
@@ -669,7 +669,7 @@ export default {
         appliedGroup: 'Attempt Group {value}',
         appliedModel: 'Client model {value}',
         appliedClientModel: 'Client model {value}',
-        appliedUpstreamModel: 'Attempt upstream model {value}',
+        appliedUpstreamModel: 'Upstream response model {value}',
         appliedAccessKey: 'Access key {value}',
         appliedChannel: 'Channel {value}',
         appliedCredential: 'Credential #{value}',
@@ -907,8 +907,8 @@ export default {
         subsequentAttemptOccurred: 'Occurred',
         noSubsequentAttempt: 'None',
         modelObservation: 'Upstream response model observation',
-        requestedModel: 'Upstream requested model',
-        reportedModel: 'Upstream reported model',
+        requestedModel: 'Client requested model',
+        reportedModel: 'Upstream response model',
         usage: {
           title: 'Usage & cost',
           description:
@@ -982,11 +982,11 @@ export default {
       modelConsistency: {
         notObserved: 'Not observed',
         unknownLabel: 'Upstream response model not observed',
-        mismatchLabel: 'Model mismatch',
+        mismatchLabel: 'Model routing detected',
         unknownTooltip:
-          'Upstream request model: {upstream}\nUpstream response model: Not observed\nNotice: Upstream response model was not observed',
+          'Client requested model: {client}\nUpstream response model: Not observed\nNotice: upstream_model fell back to the client requested model',
         mismatchTooltip:
-          'Upstream request model: {upstream}\nUpstream response model: {reported}\nWarning: Model mismatch',
+          'Client requested model: {client}\nUpstream response model: {upstream}\nNotice: the models differ, so the request may have been routed upstream',
       },
       reasoning: {
         compact: '[{value}]',

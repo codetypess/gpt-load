@@ -447,6 +447,7 @@ func TestHandlerRecordsModelConsistencyOnlyForSuccessfulModeledRequests(t *testi
 		result               UpstreamResult
 		wantConsistency      telemetry.ModelConsistency
 		wantReportedModel    string
+		wantUpstreamModel    string
 		wantDownstreamStatus int
 	}{
 		{
@@ -457,6 +458,7 @@ func TestHandlerRecordsModelConsistencyOnlyForSuccessfulModeledRequests(t *testi
 			},
 			wantConsistency:      telemetry.ModelConsistencyMatch,
 			wantReportedModel:    "gpt-4o",
+			wantUpstreamModel:    "gpt-4o",
 			wantDownstreamStatus: http.StatusOK,
 		},
 		{
@@ -465,6 +467,7 @@ func TestHandlerRecordsModelConsistencyOnlyForSuccessfulModeledRequests(t *testi
 				StatusCode: http.StatusOK, Header: make(http.Header), RequestWritten: true,
 			},
 			wantConsistency:      telemetry.ModelConsistencyUnknown,
+			wantUpstreamModel:    "gpt-4o",
 			wantDownstreamStatus: http.StatusOK,
 		},
 		{
@@ -476,6 +479,7 @@ func TestHandlerRecordsModelConsistencyOnlyForSuccessfulModeledRequests(t *testi
 			},
 			wantConsistency:      telemetry.ModelConsistencyMismatch,
 			wantReportedModel:    "different-model",
+			wantUpstreamModel:    "different-model",
 			wantDownstreamStatus: http.StatusOK,
 		},
 		{
@@ -487,6 +491,7 @@ func TestHandlerRecordsModelConsistencyOnlyForSuccessfulModeledRequests(t *testi
 				UpstreamReportedModel: "different-model",
 			},
 			wantConsistency:      telemetry.ModelConsistencyNotApplicable,
+			wantUpstreamModel:    "gpt-4o",
 			wantDownstreamStatus: http.StatusBadRequest,
 		},
 	}
@@ -515,7 +520,7 @@ func TestHandlerRecordsModelConsistencyOnlyForSuccessfulModeledRequests(t *testi
 				t.Fatalf("response/events = %d/%#v", response.Code, events)
 			}
 			event := events[0]
-			if event.UpstreamModel != "gpt-4o" ||
+			if event.UpstreamModel != test.wantUpstreamModel ||
 				event.UpstreamReportedModel != test.wantReportedModel ||
 				event.ModelConsistency != test.wantConsistency {
 				t.Fatalf("model consistency event = %#v", event)
@@ -1290,7 +1295,7 @@ func TestHandlerUsesSelectedProviderModelForPricingInsteadOfAliasOrBodyModel(t *
 
 	events := sink.snapshot()
 	if len(events) != 1 || events[0].ClientModel != "client-alias" ||
-		events[0].UpstreamModel != model || withoutPricingReceipt(events[0].Usage.Pricing) != (telemetry.PricingObservation{
+		events[0].UpstreamModel != "client-alias" || withoutPricingReceipt(events[0].Usage.Pricing) != (telemetry.PricingObservation{
 		UpstreamModel: model,
 		CostState:     "priced", PricingCompleteness: "complete",
 		EstimatedCostNanoUSD: 3_000_000_000,
@@ -1897,9 +1902,10 @@ func TestHandlerTerminalAttemptUsageKeepsRouteAttribution(t *testing.T) {
 			wantUpstreamModel:   "gpt-4o",
 		},
 		{
-			name:       "no candidate",
-			forwarder:  &scriptedForwarder{},
-			wantStatus: telemetry.RequestStatusError,
+			name:              "no candidate",
+			forwarder:         &scriptedForwarder{},
+			wantStatus:        telemetry.RequestStatusError,
+			wantUpstreamModel: "gpt-4o",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -2087,8 +2093,8 @@ func TestRequestRecorderBoundsModelsAtUTF8Boundary(t *testing.T) {
 			event.ClientModel,
 		)
 	}
-	if len(upstreamModel) <= 255 || event.UpstreamModel != upstreamModel {
-		t.Fatalf("overall upstream model was changed before pricing: %q", event.UpstreamModel)
+	if event.UpstreamModel != clientModel {
+		t.Fatalf("fallback upstream model = %q, want client model", event.UpstreamModel)
 	}
 	if len(event.Attempts) != 1 || len(attemptModel) <= 255 ||
 		event.Attempts[0].UpstreamModel != attemptModel {
@@ -2096,6 +2102,58 @@ func TestRequestRecorderBoundsModelsAtUTF8Boundary(t *testing.T) {
 			"attempt upstream model was changed before SQLite projection: %#v",
 			event.Attempts,
 		)
+	}
+}
+
+func TestRequestRecorderPrefersObservedModelAndFallsBackToClientModel(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		reported        string
+		observed        bool
+		wantUpstream    string
+		wantConsistency telemetry.ModelConsistency
+		wantReported    string
+	}{
+		{
+			name: "observed upstream model", reported: "served-model", observed: true,
+			wantUpstream: "served-model", wantConsistency: telemetry.ModelConsistencyMismatch,
+			wantReported: "served-model",
+		},
+		{
+			name: "client fallback", wantUpstream: "client-model",
+			wantConsistency: telemetry.ModelConsistencyUnknown,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sink := &recordingRequestLogSink{}
+			startedAt := time.Date(2026, time.July, 27, 10, 0, 0, 0, time.UTC)
+			recorder := newRequestRecorder(
+				sink,
+				"00000000-0000-4000-8000-000000000207",
+				startedAt,
+				1,
+				protocol.OpenAICompletions,
+				func() time.Time { return startedAt.Add(time.Second) },
+			)
+			recorder.setClientModel("client-model")
+			recorder.attempts = []telemetry.Attempt{{Sequence: 1, UpstreamModel: "configured-route-model"}}
+			recorder.outcome = requestOutcome{
+				status: telemetry.RequestStatusSuccess, statusCode: http.StatusOK,
+				upstreamModel: "configured-route-model", upstreamReportedModel: test.reported,
+				responseModelObserved: test.observed,
+			}
+
+			recorder.emit()
+
+			events := sink.snapshot()
+			if len(events) != 1 || events[0].UpstreamModel != test.wantUpstream ||
+				events[0].UpstreamReportedModel != test.wantReported ||
+				events[0].ModelConsistency != test.wantConsistency ||
+				len(events[0].Attempts) != 1 ||
+				events[0].Attempts[0].UpstreamModel != "configured-route-model" {
+				t.Fatalf("event = %#v", events)
+			}
+		})
 	}
 }
 

@@ -620,6 +620,9 @@ func (forwarder *ExecutionForwarder) prepareBufferedResult(
 		result.Header = prepared.headers
 		result.Body = prepared.downstream
 		result.ClassificationBody = prepared.inspectable
+		if !result.ResponseModelObserved {
+			applyResponseModelObservation(&result, prepared.modelObservation)
+		}
 		return result
 	}
 	if result.ExecutionError != nil &&
@@ -863,11 +866,22 @@ func baseExecutionResult(
 	usageEvidence *execution.UsageEvidence,
 	errorEvidence *execution.ErrorEvidence,
 ) UpstreamResult {
+	reportedModel := strings.TrimSpace(model)
+	modelObserved := reportedModel != ""
+	modelMismatch := modelObserved && reportedModel != input.UpstreamModelID
+	if modelObserved {
+		reportedModel = projectObservedResponseModel(
+			reportedModel,
+			input.UpstreamModelID,
+			modelMismatch,
+		)
+	}
 	result := UpstreamResult{
 		StatusCode:            statusCode,
 		Header:                cloneEndToEndHeaders(header),
-		UpstreamReportedModel: model,
-		ResponseModelObserved: model != "",
+		UpstreamReportedModel: reportedModel,
+		ResponseModelObserved: modelObserved,
+		ResponseModelMismatch: modelMismatch,
 		RequestWritten:        dispatchState == execution.DispatchMaybeSent,
 		DispatchState:         dispatchState,
 		ResponseStarted:       responseStarted,

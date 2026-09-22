@@ -649,13 +649,17 @@ func buildUsageStatDeltas(rows []models.RequestLog) (map[usageStatKey]usageStatD
 		if err != nil {
 			return nil, fmt.Errorf("aggregate request log %q completion time: %w", row.ID, err)
 		}
+		aggregationModel := row.PricingUpstreamModel
+		if aggregationModel == "" {
+			aggregationModel = row.UpstreamModel
+		}
 		key := usageStatKey{
 			BucketStartMS: bucketStartMS,
 			AccessKeyID:   row.AccessKeyID,
 			ChannelID:     row.ChannelID,
 			GroupID:       row.GroupID,
 			CredentialID:  row.CredentialID,
-			Model:         row.UpstreamModel,
+			Model:         aggregationModel,
 		}
 		delta := deltas[key]
 		if err := delta.addRow(row); err != nil {

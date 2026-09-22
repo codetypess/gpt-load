@@ -41,6 +41,9 @@ func (service *Service) List(ctx context.Context, input ListQuery) (Page, error)
 	if input.ClientModel != "" {
 		query = query.Where("client_model = ?", input.ClientModel)
 	}
+	if input.UpstreamModel != "" {
+		query = query.Where("upstream_model = ?", input.UpstreamModel)
+	}
 	if input.ModelConsistency != "" {
 		query = query.Where("model_consistency = ?", input.ModelConsistency)
 	}
@@ -209,10 +212,6 @@ func applyAttemptFilters(query *gorm.DB, input ListQuery) *gorm.DB {
 	if input.CredentialID != nil {
 		conditions = append(conditions, "attempt.credential_id = ?")
 		arguments = append(arguments, *input.CredentialID)
-	}
-	if input.UpstreamModel != "" {
-		conditions = append(conditions, "attempt.upstream_model = ?")
-		arguments = append(arguments, input.UpstreamModel)
 	}
 	if input.AttemptStatusCode != nil {
 		conditions = append(conditions, "attempt.status_code = ?")

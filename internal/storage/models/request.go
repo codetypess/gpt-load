@@ -48,6 +48,10 @@ type RequestLog struct {
 	CostState                   string              `gorm:"type:varchar(32);not null;default:'not_applicable';check:chk_request_log_cost_state,cost_state IN ('priced','unpriced','not_applicable')"`
 	PricingCompleteness         string              `gorm:"type:varchar(32);not null;default:'not_applicable';check:chk_request_log_pricing_completeness,pricing_completeness IN ('complete','partial','unavailable','not_applicable');check:chk_request_log_usage_pricing_state,(usage_state = 'not_applicable' AND cost_state = 'not_applicable' AND pricing_completeness = 'not_applicable' AND estimated_cost_nano_usd = 0) OR (usage_state = 'missing' AND cost_state = 'unpriced' AND pricing_completeness = 'unavailable' AND estimated_cost_nano_usd = 0) OR (usage_state IN ('complete','partial') AND ((cost_state = 'unpriced' AND pricing_completeness = 'unavailable' AND estimated_cost_nano_usd = 0) OR (cost_state = 'priced' AND pricing_completeness IN ('complete','partial'))))"`
 	AttemptRows                 []RequestLogAttempt `gorm:"-"`
+	// PricingUpstreamModel is transient write-pipeline metadata. RequestLog.UpstreamModel
+	// records the observed response identity, while usage aggregation remains bound
+	// to the selected attempt's pricing identity.
+	PricingUpstreamModel string `gorm:"-"`
 }
 
 // Older incremental migration tests and operators can briefly have a schema

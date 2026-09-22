@@ -803,6 +803,34 @@ func TestWriteBatchSeparatesHourAccessGroupAndUpstreamModelWithoutSkippingZeroDi
 	}
 }
 
+func TestWriteBatchAggregatesByPricingModelWhilePersistingObservedModel(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	completedAt := time.Date(2026, time.July, 24, 20, 0, 0, 0, time.UTC)
+	row := aggregationRow(aggregationRequestID(28), completedAt, 9, "served-model")
+	row.ClientModel = "client-model"
+	row.PricingUpstreamModel = "configured-route-model"
+
+	if err := (&gormBatchWriter{db: db}).WriteBatch(context.Background(), []models.RequestLog{row}); err != nil {
+		t.Fatalf("WriteBatch() error = %v", err)
+	}
+
+	var persisted models.RequestLog
+	if err := db.First(&persisted, "id = ?", row.ID).Error; err != nil {
+		t.Fatalf("query RequestLog: %v", err)
+	}
+	if persisted.UpstreamModel != "served-model" {
+		t.Fatalf("persisted upstream model = %q, want served-model", persisted.UpstreamModel)
+	}
+
+	var stat models.UsageStat
+	if err := db.Where("model = ?", "configured-route-model").Take(&stat).Error; err != nil {
+		t.Fatalf("query UsageStat: %v", err)
+	}
+	if stat.RequestCount != 1 || stat.UncachedInputTokens != 1 || stat.OutputTokens != 2 {
+		t.Fatalf("UsageStat = %+v", stat)
+	}
+}
+
 func TestWriteBatchPersistsZeroAttemptRequestWithoutUsageAggregation(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	completedAt := time.Date(2026, time.August, 8, 14, 1, 37, 0, time.Local)
