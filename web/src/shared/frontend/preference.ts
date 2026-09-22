@@ -24,13 +24,13 @@ function removePreference(key: string): void {
   try {
     getStorage()?.removeItem(key)
   } catch {
-    // 存储不可用时，默认新版入口仍然生效。
+    // 存储不可用时，默认经典版入口仍然生效。
   }
 }
 
 export function getPreferredFrontend(): FrontendID {
   removePreference(legacyFrontendStorageKey)
-  return readStorageKey(frontendStorageKey) === 'classic' ? 'classic' : 'modern'
+  return readStorageKey(frontendStorageKey) === 'modern' ? 'modern' : 'classic'
 }
 
 export function switchFrontend(frontend: FrontendID, path = '/settings'): void {
@@ -39,10 +39,10 @@ export function switchFrontend(frontend: FrontendID, path = '/settings'): void {
     throw new Error('FRONTEND_PREFERENCE_NOT_SAVED')
   }
   storage.removeItem(legacyFrontendStorageKey)
-  if (frontend === 'classic') storage.setItem(frontendStorageKey, frontend)
+  if (frontend === 'modern') storage.setItem(frontendStorageKey, frontend)
   else storage.removeItem(frontendStorageKey)
   const saved = storage.getItem(frontendStorageKey)
-  if ((frontend === 'classic' && saved !== frontend) || (frontend === 'modern' && saved !== null)) {
+  if ((frontend === 'modern' && saved !== frontend) || (frontend === 'classic' && saved !== null)) {
     throw new Error('FRONTEND_PREFERENCE_NOT_SAVED')
   }
   window.location.assign(path)
