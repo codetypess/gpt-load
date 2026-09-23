@@ -90,6 +90,7 @@ export interface LogReasoning {
 export interface LogEntry {
   auto_decision?: LogAutoDecision
   request_id: string
+  started_at_ms: number
   completed_at_ms: number
   access_key: { id: number; name: string | null; deleted: boolean }
   protocol: string
@@ -282,6 +283,7 @@ function entry(value: unknown): LogEntry {
   if (!logRequestPattern.test(id)) throw new InvalidResponseError()
   return {
     request_id: id,
+    started_at_ms: integer(row.started_at_ms ?? row.completed_at_ms),
     completed_at_ms: integer(row.completed_at_ms),
     access_key: {
       id: integer(key.id),

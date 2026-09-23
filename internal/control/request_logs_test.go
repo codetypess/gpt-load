@@ -415,6 +415,7 @@ func TestRequestLogEndpointReturnsOpaqueCursorAndSafeDTO(t *testing.T) {
 	t.Parallel()
 	completedAt := time.Date(2026, time.July, 24, 12, 0, 0, 123456789, time.UTC)
 	completedAtMS := completedAt.UnixMilli()
+	startedAtMS := completedAtMS - 2_345
 	contextThreshold := int64(272_000)
 	nextCursor := &requestlog.Cursor{
 		CompletedAtMS: completedAtMS,
@@ -426,6 +427,7 @@ func TestRequestLogEndpointReturnsOpaqueCursorAndSafeDTO(t *testing.T) {
 			{
 				Items: []requestlog.Record{{
 					RequestID:     "00000000-0000-4000-8000-000000000501",
+					StartedAtMS:   startedAtMS,
 					CompletedAtMS: completedAtMS,
 					AccessKey: requestlog.AccessKeyRef{
 						ID: 41, Name: &currentName,
@@ -510,6 +512,8 @@ func TestRequestLogEndpointReturnsOpaqueCursorAndSafeDTO(t *testing.T) {
 		t.Fatalf("list item unexpectedly exposes attempts: %#v", envelope.Data.Items[0])
 	}
 	if envelope.Data.Items[0]["affinity_kind"] != telemetry.AffinityPromptCacheKey ||
+		envelope.Data.Items[0]["started_at_ms"] != float64(startedAtMS) ||
+		envelope.Data.Items[0]["completed_at_ms"] != float64(completedAtMS) ||
 		envelope.Data.Items[0]["upstream_reported_model"] != "reported-model" ||
 		envelope.Data.Items[0]["model_consistency"] != string(telemetry.ModelConsistencyMismatch) ||
 		envelope.Data.Items[0]["route_mode"] != string(channel.RouteNative) ||

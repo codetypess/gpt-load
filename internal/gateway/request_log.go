@@ -145,6 +145,7 @@ func (recorder *requestRecorder) emit() {
 	recorder.sink.Emit(telemetry.RequestEvent{
 		AutoDecision:          recorder.autoLogDecision(),
 		RequestID:             recorder.requestID,
+		StartedAt:             recorder.startedAt.UTC(),
 		CompletedAt:           completedAt.UTC(),
 		AccessKeyID:           recorder.accessKeyID,
 		Protocol:              recorder.protocol,
@@ -178,6 +179,7 @@ func (recorder *requestRecorder) emitProcessing() {
 	}
 	event := telemetry.RequestEvent{
 		RequestID:   recorder.requestID,
+		StartedAt:   recorder.startedAt.UTC(),
 		CompletedAt: recorder.startedAt.UTC(),
 		AccessKeyID: recorder.accessKeyID,
 		Protocol:    recorder.protocol,
@@ -211,6 +213,7 @@ func (recorder *requestRecorder) emitProcessingRoute(
 	observation.CredentialID = credentialID
 	sink.EmitProcessing(telemetry.RequestEvent{
 		RequestID:   recorder.requestID,
+		StartedAt:   recorder.startedAt.UTC(),
 		CompletedAt: recorder.startedAt.UTC(),
 		AccessKeyID: recorder.accessKeyID,
 		Protocol:    recorder.protocol,

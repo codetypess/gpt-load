@@ -18,6 +18,7 @@ import (
 
 func TestMapEventPersistsFrozenUsagePricingAndAttribution(t *testing.T) {
 	event := testEvent("00000000-0000-4000-8000-000000000101")
+	event.StartedAt = time.Date(2026, time.July, 24, 20, 29, 58, 456, time.FixedZone("test", 8*60*60))
 	event.CompletedAt = time.Date(2026, time.July, 24, 20, 30, 0, 123, time.FixedZone("test", 8*60*60))
 	event.Attempts[0].CompletedAt = event.CompletedAt.Add(-90 * time.Second)
 	event.Protocol = protocol.OpenAICompletions
@@ -60,8 +61,9 @@ func TestMapEventPersistsFrozenUsagePricingAndAttribution(t *testing.T) {
 	}
 
 	row := mustMapEvent(t, redact.New(), event)
-	if row.ID != event.RequestID || row.CompletedAtMS != 1_784_896_200_000 {
-		t.Fatalf("identity/completed_at_ms = %q/%d", row.ID, row.CompletedAtMS)
+	if row.ID != event.RequestID || row.StartedAtMS != event.StartedAt.UnixMilli() ||
+		row.CompletedAtMS != 1_784_896_200_000 {
+		t.Fatalf("identity/timestamps = %q/%d/%d", row.ID, row.StartedAtMS, row.CompletedAtMS)
 	}
 	if row.GroupID != 7 || row.ClientModel != "client-alias" || row.UpstreamModel != "upstream-model" ||
 		row.UpstreamReportedModel != "upstream-model" ||

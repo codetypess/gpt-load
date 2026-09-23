@@ -172,6 +172,7 @@ export interface RequestLogReasoningDto {
 export interface RequestLogItemDto {
   auto_decision?: AutoDecisionDto
   request_id: string
+  started_at_ms: number
   completed_at_ms: number
   access_key: { id: number; name: string | null; deleted: boolean }
   protocol: AccessProtocol
@@ -310,6 +311,7 @@ const itemFields = [
   'total_cost_state',
   'total_pricing_completeness',
   'request_id',
+  'started_at_ms',
   'completed_at_ms',
   'access_key',
   'protocol',
@@ -650,6 +652,7 @@ function projectItemRecord(record: Record<string, unknown>): RequestLogItemDto {
 
   return {
     request_id: projectRequestID(record.request_id),
+    started_at_ms: projectEpochMilliseconds(record.started_at_ms ?? record.completed_at_ms),
     completed_at_ms: projectEpochMilliseconds(record.completed_at_ms),
     access_key: projectAccessKey(record.access_key),
     protocol: projectEnum(record.protocol, enabledDataProtocols),

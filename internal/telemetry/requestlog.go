@@ -136,6 +136,7 @@ type UsageObservation struct {
 type RequestEvent struct {
 	AutoDecision          *automodel.Decision
 	RequestID             string
+	StartedAt             time.Time
 	CompletedAt           time.Time
 	AccessKeyID           uint
 	Protocol              protocol.Protocol

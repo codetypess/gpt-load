@@ -19,6 +19,7 @@ func TestRequestTelemetryContractUsesExactFieldAllowlist(t *testing.T) {
 		reflect.TypeOf(RequestEvent{}): {
 			"AutoDecision",
 			"RequestID",
+			"StartedAt",
 			"CompletedAt",
 			"AccessKeyID",
 			"Protocol",

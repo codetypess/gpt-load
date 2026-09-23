@@ -97,7 +97,9 @@ func TestRequestRecorderCapturesFirstResponseAfterDownstreamCommit(t *testing.T)
 
 	events := sink.snapshot()
 	if len(events) != 1 || !events[0].Stream || events[0].FirstResponseMs == nil ||
-		*events[0].FirstResponseMs != 340 || events[0].DurationMs != 2_000 {
+		*events[0].FirstResponseMs != 340 || events[0].DurationMs != 2_000 ||
+		!events[0].StartedAt.Equal(startedAt) ||
+		!events[0].CompletedAt.Equal(startedAt.Add(2*time.Second)) {
 		t.Fatalf("captured timing = %#v", events)
 	}
 }

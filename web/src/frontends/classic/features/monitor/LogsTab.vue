@@ -306,7 +306,7 @@ watch(
   },
 )
 
-function formatLogCompletedAt(value: number): string {
+function formatLogStartedAt(value: number): string {
   const formatted = formatLocalInstantWithSeconds(value)
   return formatted === '—' ? formatted : formatted.slice(5)
 }
@@ -784,8 +784,8 @@ function costLabel(log: RequestLogItemDto): string {
             role="cell"
             :data-label="t('monitor.logs.columns.time')"
           >
-            <time :datetime="formatISOInstant(log.completed_at_ms)">
-              {{ formatLogCompletedAt(log.completed_at_ms) }}
+            <time :datetime="formatISOInstant(log.started_at_ms)">
+              {{ formatLogStartedAt(log.started_at_ms) }}
             </time>
           </div>
           <div

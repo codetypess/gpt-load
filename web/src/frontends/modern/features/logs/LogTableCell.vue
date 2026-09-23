@@ -94,14 +94,14 @@ const clock = computed(() =>
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
-  }).format(props.row.completed_at_ms),
+  }).format(props.row.started_at_ms),
 )
 const date = computed(() =>
   dateFormatter(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(props.row.completed_at_ms),
+  }).format(props.row.started_at_ms),
 )
 const autoDecisionPreset = computed(() => props.row.auto_decision?.selection.preset_name ?? '')
 const autoDecisionTooltip = computed(() => {
@@ -213,7 +213,7 @@ function fieldFilterValue(field: LogColumnId): string {
 <template>
   <div v-if="fields[0] === 'completed_at_ms'" class="modern-log-cell-stack">
     <AppButton variant="text" class="modern-log-time" @click="$emit('open')">
-      <AppOverflowText :text="clock" :full-text="logTime(row.completed_at_ms, locale, true)" />
+      <AppOverflowText :text="clock" :full-text="logTime(row.started_at_ms, locale, true)" />
     </AppButton>
     <div class="modern-log-cell-value is-secondary">
       <span>{{ date }}</span>

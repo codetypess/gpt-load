@@ -57,6 +57,7 @@ export interface LogColumn {
 // 表格列：细分缓存写入与两个完整性状态只在详情面板展示，不进表格与列选择器。
 const definitions: readonly [LogColumnId, number, LogColumnSection, boolean, boolean?, number?][] =
   [
+    // 保留字段 ID 以兼容已保存的列配置；时间列展示请求开始时间。
     ['completed_at_ms', 80, 'request', true],
     ['group', 120, 'routing', true, true, 1],
     ['channel', 104, 'routing', true, true],

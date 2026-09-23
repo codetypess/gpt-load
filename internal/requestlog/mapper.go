@@ -30,7 +30,12 @@ func mapEvent(
 	if err != nil {
 		return models.RequestLog{}, fmt.Errorf("map request event completion time: %w", err)
 	}
-	startedAtMS, err := epochms.FromTime(event.CompletedAt)
+	startedAt := event.StartedAt
+	if startedAt.IsZero() {
+		// 兼容尚未携带开始时间的旧事件；新事件由网关明确提供开始时间。
+		startedAt = event.CompletedAt
+	}
+	startedAtMS, err := epochms.FromTime(startedAt)
 	if err != nil {
 		return models.RequestLog{}, fmt.Errorf("map request event start time: %w", err)
 	}

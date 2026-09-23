@@ -135,6 +135,7 @@ type requestLogItemResponse struct {
 	TotalCostState            string                       `json:"total_cost_state"`
 	TotalPricingCompleteness  string                       `json:"total_pricing_completeness"`
 	RequestID                 string                       `json:"request_id"`
+	StartedAtMS               int64                        `json:"started_at_ms"`
 	CompletedAtMS             int64                        `json:"completed_at_ms"`
 	AccessKey                 requestLogAccessKeyResponse  `json:"access_key"`
 	Protocol                  string                       `json:"protocol"`
@@ -1077,6 +1078,14 @@ func mapRequestLogItemResponse(
 	usageCost requestLogUsageCostResponse,
 	credentialLabels map[uint]string,
 ) (requestLogItemResponse, error) {
+	startedAtMS := record.StartedAtMS
+	if startedAtMS == 0 {
+		// 兼容迁移前创建的记录，旧数据只有完成时间可用。
+		startedAtMS = record.CompletedAtMS
+	}
+	if err := validateSafeMilliseconds(startedAtMS); err != nil {
+		return requestLogItemResponse{}, fmt.Errorf("map request log started_at_ms: %w", err)
+	}
 	if err := validateSafeMilliseconds(record.CompletedAtMS); err != nil {
 		return requestLogItemResponse{}, fmt.Errorf("map request log completed_at_ms: %w", err)
 	}
@@ -1112,6 +1121,7 @@ func mapRequestLogItemResponse(
 		TotalCostState:            total.CostState,
 		TotalPricingCompleteness:  total.PricingCompleteness,
 		RequestID:                 record.RequestID,
+		StartedAtMS:               startedAtMS,
 		CompletedAtMS:             record.CompletedAtMS,
 		AccessKey: requestLogAccessKeyResponse{
 			ID:      record.AccessKey.ID,
