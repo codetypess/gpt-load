@@ -52,6 +52,7 @@ import {
   validUsageFilter,
 } from './usage-state'
 import UsageTrend from './UsageTrend.vue'
+import UsageSpeedTrend from './UsageSpeedTrend.vue'
 import UsageRank from './UsageRank.vue'
 import UsageComposition from './UsageComposition.vue'
 import UsageMetrics from './UsageMetrics.vue'
@@ -69,11 +70,12 @@ const state = useURLState(
 const query = useQuery(
   computed(() => {
     const filters = { ...state.value.filters },
-      range = { ...state.value.range }
+      range = { ...state.value.range },
+      includeModelSpeed = state.value.trend === 'speed'
     return {
-      queryKey: ['modern', 'usage', admin.value, filters, range],
+      queryKey: ['modern', 'usage', admin.value, filters, range, includeModelSpeed],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        getUsage(client, { ...filters, ...resolveTimeRange(range) }, signal),
+        getUsage(client, { ...filters, ...resolveTimeRange(range) }, signal, includeModelSpeed),
       placeholderData: keepPreviousData,
     }
   }),
@@ -507,7 +509,8 @@ const bucketLabel = computed(() => {
             <span>{{ period }}</span>
             <span>{{ bucketLabel }}</span>
           </div>
-          <UsageTrend :report="report" :metric="state.trend" />
+          <UsageSpeedTrend v-if="state.trend === 'speed'" :report="report" />
+          <UsageTrend v-else :report="report" :metric="state.trend" />
         </AppPanel>
         <UsageComposition :summary="report.summary" />
       </div>

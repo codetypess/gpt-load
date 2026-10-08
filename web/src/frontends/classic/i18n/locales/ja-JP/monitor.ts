@@ -351,6 +351,16 @@ export default {
         inputTokens: '入力 Token',
         outputTokens: '出力 Token',
       },
+      speed: {
+        title: 'モデル別の出力速度推移',
+        description:
+          'TPS は 1 秒あたりの出力 Token 数です。各時間バケットで出力 Token 合計 ÷ リクエスト総所要時間を計算し、待機、再試行、認証情報の切り替え、推論時間も含みます。',
+        accessibleDescription:
+          '時間バケットとアップストリームモデル別の加重平均 TPS。計測可能なリクエストがないバケットは空欄です。',
+        meta: '上位 5 件 · {granularity}',
+        empty: 'この期間には計算可能な出力速度がありません。',
+        requests: '有効なリクエスト {count} 件',
+      },
       series: {
         title: 'UTC バケット',
         description: '選択した時間粒度で集計した使用量とコストです。',

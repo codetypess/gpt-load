@@ -39,6 +39,7 @@ import { useAuthSession } from '@/features/auth/auth-session'
 import { resolveDateTimePreset, type DateTimePreset } from '@/lib/time'
 
 import MonitorSectionHeading from './MonitorSectionHeading.vue'
+import ModelSpeedChart from './ModelSpeedChart.vue'
 import UsageBarChart from './UsageBarChart.vue'
 import UsageDistribution from './UsageDistribution.vue'
 import {
@@ -593,6 +594,23 @@ defineExpose({ openFilters, refresh, navigationReport, navigationPending })
               :range-end="report.to_ms"
               :locale="locale"
               :grouped="routeState.metric === 'tokens'"
+            />
+          </div>
+        </section>
+
+        <section class="usage-trend-panel" aria-labelledby="usage-speed-title">
+          <MonitorSectionHeading
+            id="usage-speed-title"
+            :title="t('monitor.usage.speed.title')"
+            :description="t('monitor.usage.speed.description')"
+            :meta="t('monitor.usage.speed.meta', { granularity: granularityLabel() })"
+          />
+          <div class="usage-trend-panel__chart">
+            <ModelSpeedChart
+              :series="report.model_speed"
+              :range-start="report.from_ms"
+              :range-end="report.to_ms"
+              :locale="locale"
             />
           </div>
         </section>

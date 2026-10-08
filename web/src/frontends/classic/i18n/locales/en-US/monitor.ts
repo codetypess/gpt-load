@@ -351,6 +351,16 @@ export default {
         inputTokens: 'Input tokens',
         outputTokens: 'Output tokens',
       },
+      speed: {
+        title: 'Output speed by model',
+        description:
+          'TPS means output tokens per second. Each time bucket divides total output tokens by total request duration, including waiting, retries, credential rotation, and reasoning time.',
+        accessibleDescription:
+          'Weighted average TPS by time bucket and upstream model. Buckets without measurable requests remain empty.',
+        meta: 'Top 5 · {granularity}',
+        empty: 'No measurable output speed in this range.',
+        requests: '{count} measured requests',
+      },
       series: {
         title: 'UTC buckets',
         description: 'Usage and cost aggregated at the selected time granularity.',

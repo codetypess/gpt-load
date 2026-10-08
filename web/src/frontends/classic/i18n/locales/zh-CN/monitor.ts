@@ -335,6 +335,15 @@ export default {
         inputTokens: '输入 Token',
         outputTokens: '输出 Token',
       },
+      speed: {
+        title: '按模型的输出速度趋势',
+        description:
+          'TPS 表示每秒输出 Token 数；每个时间桶按输出 Token 总量 ÷ 请求总耗时（秒）计算，等待、重试、凭据轮换与思考耗时均计入。',
+        accessibleDescription: '按时间桶与上游模型展示加权平均 TPS，缺少有效请求的时间桶留空。',
+        meta: 'Top 5 · {granularity}',
+        empty: '该范围内暂无可计算的输出速度。',
+        requests: '{count} 个有效请求',
+      },
       series: {
         title: 'UTC 时间桶',
         description: '按所选时间粒度统计的用量与成本。',

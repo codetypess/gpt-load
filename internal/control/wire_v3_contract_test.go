@@ -169,8 +169,18 @@ func TestUsageMillisCostWireUsesIntegerBucketsAndStringCost(t *testing.T) {
 				BucketStartMS: 1_784_894_400_000,
 				BucketEndMS:   1_784_898_000_000,
 			}},
+			ModelSpeed: []usageModelSpeedSeriesResponse{{
+				Model: "gpt-test",
+				Points: []usageModelSpeedPointResponse{{
+					BucketStartMS: 1_784_894_400_000,
+					BucketEndMS:   1_784_898_000_000,
+					RequestCount:  2,
+					OutputTokens:  200,
+					DurationMS:    4_000,
+				}},
+			}},
 		},
-		[]string{"from_ms", "to_ms", "observed_at_ms", "summary", "series"},
+		[]string{"from_ms", "to_ms", "observed_at_ms", "summary", "series", "model_speed"},
 	)
 }
 

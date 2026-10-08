@@ -496,6 +496,9 @@ func applyUsageJournalBatch(
 			return fmt.Errorf("upsert usage stat: %w", err)
 		}
 	}
+	if err := applyUsageModelSpeedJournals(tx, journals); err != nil {
+		return err
+	}
 	ids := make([]string, 0, len(journals))
 	for _, journal := range journals {
 		ids = append(ids, journal.RequestID)
@@ -562,7 +565,7 @@ func buildUsageAggregationJournals(
 			return nil, fmt.Errorf("build usage journal %q: unexpected delta count", row.ID)
 		}
 		for key, delta := range deltas {
-			journals = append(journals, models.UsageAggregationJournal{
+			journal := models.UsageAggregationJournal{
 				RequestID:               row.ID,
 				BucketStartMS:           key.BucketStartMS,
 				AccessKeyID:             key.AccessKeyID,
@@ -584,7 +587,18 @@ func buildUsageAggregationJournals(
 				PartialCount:            delta.PartialCount,
 				UnpricedRequestCount:    delta.UnpricedRequestCount,
 				PricingPartialCount:     delta.PricingPartialCount,
-			})
+			}
+			if usageModelSpeedEligible(row) {
+				speedBucketStartMS, err := epochms.AlignDown(row.CompletedAtMS, UsageFiveMinuteBucketMS)
+				if err != nil {
+					return nil, fmt.Errorf("aggregate request log %q speed completion time: %w", row.ID, err)
+				}
+				journal.SpeedBucketStartMS = speedBucketStartMS
+				journal.SpeedRequestCount = 1
+				journal.SpeedOutputTokens = row.OutputTokens
+				journal.SpeedDurationMS = row.DurationMs
+			}
+			journals = append(journals, journal)
 		}
 	}
 	return journals, nil

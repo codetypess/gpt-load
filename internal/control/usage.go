@@ -21,6 +21,8 @@ import (
 
 const usageDistributionLimit = 5
 
+const usageModelSpeedLimit = 5
+
 type UsageStatReader interface {
 	QueryUsage(context.Context, requestlog.UsageQuery) (requestlog.UsageReport, error)
 }
@@ -47,6 +49,19 @@ type usageSeriesResponse struct {
 	BucketStartMS int64 `json:"bucket_start_ms"`
 	BucketEndMS   int64 `json:"bucket_end_ms"`
 	usageAggregateResponse
+}
+
+type usageModelSpeedPointResponse struct {
+	BucketStartMS int64 `json:"bucket_start_ms"`
+	BucketEndMS   int64 `json:"bucket_end_ms"`
+	RequestCount  int64 `json:"request_count"`
+	OutputTokens  int64 `json:"output_tokens"`
+	DurationMS    int64 `json:"duration_ms"`
+}
+
+type usageModelSpeedSeriesResponse struct {
+	Model  string                         `json:"model"`
+	Points []usageModelSpeedPointResponse `json:"points"`
 }
 
 type usageDistributionItemResponse struct {
@@ -85,15 +100,16 @@ type usageCollectionHealthResponse struct {
 }
 
 type usageResponse struct {
-	Granularity      requestlog.UsageGranularity    `json:"granularity"`
-	BucketWidthMS    int64                          `json:"bucket_width_ms"`
-	FromMS           int64                          `json:"from_ms"`
-	ToMS             int64                          `json:"to_ms"`
-	ObservedAtMS     int64                          `json:"observed_at_ms"`
-	Summary          usageAggregateResponse         `json:"summary"`
-	Series           []usageSeriesResponse          `json:"series"`
-	Distributions    usageDistributionViewsResponse `json:"distributions"`
-	CollectionHealth usageCollectionHealthResponse  `json:"collection_health"`
+	Granularity      requestlog.UsageGranularity     `json:"granularity"`
+	BucketWidthMS    int64                           `json:"bucket_width_ms"`
+	FromMS           int64                           `json:"from_ms"`
+	ToMS             int64                           `json:"to_ms"`
+	ObservedAtMS     int64                           `json:"observed_at_ms"`
+	Summary          usageAggregateResponse          `json:"summary"`
+	Series           []usageSeriesResponse           `json:"series"`
+	ModelSpeed       []usageModelSpeedSeriesResponse `json:"model_speed"`
+	Distributions    usageDistributionViewsResponse  `json:"distributions"`
+	CollectionHealth usageCollectionHealthResponse   `json:"collection_health"`
 }
 
 func (service *Service) QueryUsage(
@@ -155,6 +171,7 @@ func parseUsageQuery(rawQuery string) (requestlog.UsageQuery, *app_errors.APIErr
 		"channel_id":     {},
 		"credential_id":  {},
 		"upstream_model": {},
+		"include_model_speed": {},
 	}
 	for key, value := range values {
 		if _, ok := allowed[key]; !ok || len(value) != 1 {
@@ -184,6 +201,13 @@ func parseUsageQuery(rawQuery string) (requestlog.UsageQuery, *app_errors.APIErr
 		ToMS:          toMS,
 		Granularity:   granularity,
 		BucketWidthMS: bucketWidthMS,
+	}
+	if value, ok := singleQueryValue(values, "include_model_speed"); ok {
+		include, valid := parseRequestLogBool(value)
+		if !valid {
+			return requestlog.UsageQuery{}, app_errors.ErrBadRequest
+		}
+		query.IncludeModelSpeed = include
 	}
 
 	if value, ok := singleQueryValue(values, "access_key_id"); ok {
@@ -300,8 +324,9 @@ func (service *Service) mapUsageResponse(
 			WriteFailureTotal:    stats.WriteFailureTotal,
 			LastWriteFailureAtMS: lastWriteFailureAtMS,
 		},
-		Summary: summary,
-		Series:  make([]usageSeriesResponse, 0, len(report.Series)),
+		Summary:    summary,
+		Series:     make([]usageSeriesResponse, 0, len(report.Series)),
+		ModelSpeed: make([]usageModelSpeedSeriesResponse, 0, len(report.ModelSpeed)),
 		Distributions: usageDistributionViewsResponse{
 			Model: make(map[requestlog.UsageDistributionMetric]usageDistributionResponse, 3),
 		},
@@ -326,6 +351,11 @@ func (service *Service) mapUsageResponse(
 			usageAggregateResponse: aggregate,
 		})
 	}
+	modelSpeed, err := mapUsageModelSpeed(query, bucketWidthMS, report.ModelSpeed)
+	if err != nil {
+		return usageResponse{}, err
+	}
+	result.ModelSpeed = modelSpeed
 	if !accessKeyScoped {
 		result.Distributions.Group = make(map[requestlog.UsageDistributionMetric]usageDistributionResponse, 3)
 		result.Distributions.AccessKey = make(map[requestlog.UsageDistributionMetric]usageDistributionResponse, 3)
@@ -366,6 +396,66 @@ func (service *Service) mapUsageResponse(
 				result.Distributions.AccessKey[metric] = mapped
 			}
 		}
+	}
+	return result, nil
+}
+
+func mapUsageModelSpeed(
+	query requestlog.UsageQuery,
+	bucketWidthMS int64,
+	series []requestlog.UsageModelSpeedSeries,
+) ([]usageModelSpeedSeriesResponse, error) {
+	if len(series) > usageModelSpeedLimit {
+		return nil, fmt.Errorf("map usage model speed: series exceeds limit")
+	}
+	result := make([]usageModelSpeedSeriesResponse, 0, len(series))
+	seenModels := make(map[string]struct{}, len(series))
+	for _, source := range series {
+		if !validUsageModel(source.Model) {
+			return nil, fmt.Errorf("map usage model speed: invalid model")
+		}
+		if _, exists := seenModels[source.Model]; exists {
+			return nil, fmt.Errorf("map usage model speed: duplicate model")
+		}
+		seenModels[source.Model] = struct{}{}
+		mapped := usageModelSpeedSeriesResponse{
+			Model:  source.Model,
+			Points: make([]usageModelSpeedPointResponse, 0, len(source.Points)),
+		}
+		if len(source.Points) == 0 {
+			return nil, fmt.Errorf("map usage model speed: empty series")
+		}
+		previousBucketStartMS := int64(-1)
+		for _, point := range source.Points {
+			values := []int64{point.RequestCount, point.OutputTokens, point.DurationMS}
+			for _, value := range values {
+				if value <= 0 || value > maxSafeInteger {
+					return nil, fmt.Errorf("map usage model speed: unsafe aggregate")
+				}
+			}
+			if err := validateSafeMilliseconds(point.BucketStartMS); err != nil {
+				return nil, fmt.Errorf("map usage model speed bucket_start_ms: %w", err)
+			}
+			if err := validateSafeMilliseconds(point.BucketEndMS); err != nil {
+				return nil, fmt.Errorf("map usage model speed bucket_end_ms: %w", err)
+			}
+			alignedBucketStartMS := point.BucketStartMS - point.BucketStartMS%bucketWidthMS
+			if point.BucketStartMS != max(alignedBucketStartMS, query.FromMS) ||
+				point.BucketEndMS != min(alignedBucketStartMS+bucketWidthMS, query.ToMS) ||
+				point.BucketEndMS <= point.BucketStartMS ||
+				point.BucketStartMS <= previousBucketStartMS {
+				return nil, fmt.Errorf("map usage model speed: invalid bucket")
+			}
+			previousBucketStartMS = point.BucketStartMS
+			mapped.Points = append(mapped.Points, usageModelSpeedPointResponse{
+				BucketStartMS: point.BucketStartMS,
+				BucketEndMS:   point.BucketEndMS,
+				RequestCount:  point.RequestCount,
+				OutputTokens:  point.OutputTokens,
+				DurationMS:    point.DurationMS,
+			})
+		}
+		result = append(result, mapped)
 	}
 	return result, nil
 }

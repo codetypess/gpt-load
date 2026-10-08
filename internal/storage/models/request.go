@@ -139,6 +139,10 @@ type UsageAggregationJournal struct {
 	PartialCount            int64  `gorm:"not null;check:chk_usage_journal_partial,partial_count >= 0"`
 	UnpricedRequestCount    int64  `gorm:"not null;check:chk_usage_journal_unpriced,unpriced_request_count >= 0"`
 	PricingPartialCount     int64  `gorm:"not null;check:chk_usage_journal_pricing_partial,pricing_partial_count >= 0"`
+	SpeedBucketStartMS      int64  `gorm:"column:speed_bucket_start_ms;not null;default:0;check:chk_usage_journal_speed_bucket,speed_bucket_start_ms >= 0"`
+	SpeedRequestCount       int64  `gorm:"not null;default:0;check:chk_usage_journal_speed_request_count,speed_request_count IN (0,1)"`
+	SpeedOutputTokens       int64  `gorm:"not null;default:0;check:chk_usage_journal_speed_output_tokens,speed_output_tokens >= 0"`
+	SpeedDurationMS         int64  `gorm:"column:speed_duration_ms;not null;default:0;check:chk_usage_journal_speed_duration,speed_duration_ms >= 0"`
 	Applied                 bool   `gorm:"not null;default:false;check:chk_usage_journal_applied,applied IN (TRUE, FALSE);index:idx_usage_aggregation_journal_pending_bucket,priority:1"`
 }
 
@@ -170,4 +174,19 @@ type UsageStat struct {
 	PartialCount            int64  `gorm:"not null;default:0;check:chk_usage_stat_partial,partial_count >= 0"`
 	UnpricedRequestCount    int64  `gorm:"not null;default:0;check:chk_usage_stat_unpriced,unpriced_request_count >= 0"`
 	PricingPartialCount     int64  `gorm:"not null;default:0;check:chk_usage_stat_pricing_partial,pricing_partial_count >= 0"`
+}
+
+// UsageModelSpeedStat is a five-minute TPS aggregate by access key, channel,
+// upstream group, credential, and upstream model.
+type UsageModelSpeedStat struct {
+	ID            uint   `gorm:"primaryKey;autoIncrement"`
+	BucketStartMS int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_model_speed_stat_bucket,bucket_start_ms >= 0;uniqueIndex:idx_usage_model_speed_stats_identity,priority:1;index:idx_usage_model_speed_stats_bucket"`
+	AccessKeyID   uint   `gorm:"not null;uniqueIndex:idx_usage_model_speed_stats_identity,priority:2"`
+	ChannelID     string `gorm:"type:varchar(64);not null;default:'';uniqueIndex:idx_usage_model_speed_stats_identity,priority:3"`
+	GroupID       uint   `gorm:"not null;uniqueIndex:idx_usage_model_speed_stats_identity,priority:4"`
+	CredentialID  uint   `gorm:"not null;default:0;uniqueIndex:idx_usage_model_speed_stats_identity,priority:5"`
+	Model         string `gorm:"type:varchar(255);not null;uniqueIndex:idx_usage_model_speed_stats_identity,priority:6"`
+	RequestCount  int64  `gorm:"not null;default:0;check:chk_usage_model_speed_stat_requests,request_count > 0"`
+	OutputTokens  int64  `gorm:"not null;default:0;check:chk_usage_model_speed_stat_output,output_tokens > 0"`
+	DurationMS    int64  `gorm:"column:duration_ms;not null;default:0;check:chk_usage_model_speed_stat_duration,duration_ms > 0"`
 }

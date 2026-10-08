@@ -1,7 +1,7 @@
 import type { UsageAggregate, UsageItem, UsageMetric, UsageReport } from '@modern/api/usage'
 import { formatCompactNumber, formatNanoUSD } from '@modern/components/ui/format'
 import { numberFormatter } from '@modern/components/ui/intl-formatters'
-import type { TrendMetric } from './usage-state'
+import type { AggregateTrendMetric } from './usage-state'
 
 export function inputTokens(row: UsageAggregate): number {
   return row.total_tokens - row.output_tokens
@@ -32,7 +32,7 @@ export function amount(row: UsageItem, metric: UsageMetric, locale: string): str
     ? formatUsageCost(row.estimated_cost_nano_usd, locale)
     : formatCompactNumber(distributionValue(row, metric), locale)
 }
-export function metricValue(row: UsageAggregate, metric: TrendMetric): number | null {
+export function metricValue(row: UsageAggregate, metric: AggregateTrendMetric): number | null {
   if (metric === 'cache') return cacheRate(row)
   if (
     metric === 'cost' &&
@@ -48,7 +48,7 @@ export function metricValue(row: UsageAggregate, metric: TrendMetric): number | 
     return null
   return distributionValue(row, metric)
 }
-export function chartPoints(report: UsageReport, metric: TrendMetric) {
+export function chartPoints(report: UsageReport, metric: AggregateTrendMetric) {
   const buckets = new Map(report.series.map((row) => [row.bucket_start_ms, row]))
   const points: { from: number; to: number; value: number | null }[] = []
   for (
