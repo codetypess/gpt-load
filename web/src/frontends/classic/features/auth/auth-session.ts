@@ -7,7 +7,6 @@ import {
   NetworkError,
   RequestCancelledError,
 } from '@shared/http/errors'
-import { clearFrontendPreference } from '@shared/frontend/preference'
 import type { AuthPrincipalType, AuthSessionPayload } from '@shared/http/types'
 import { controlQueryKeys } from '@/app/query-keys'
 
@@ -103,7 +102,6 @@ export function createAuthSession(deps: AuthSessionDependencies): AuthSession {
     credential = ''
     credentialRevision += 1
     removeStoredCredential(deps.storage, deps.sessionStorage)
-    clearFrontendPreference()
     state.phase = 'anonymous'
     state.retryAfterSeconds = 0
     state.principalType = null
