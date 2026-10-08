@@ -94,19 +94,19 @@ const clock = computed(() =>
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
-  }).format(props.row.completed_at_ms),
+  }).format(props.row.started_at_ms),
 )
 const date = computed(() =>
   dateFormatter(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(props.row.completed_at_ms),
+  }).format(props.row.started_at_ms),
 )
-const fullTime = computed(() => logTime(props.row.completed_at_ms, locale.value, true))
+const fullTime = computed(() => logTime(props.row.started_at_ms, locale.value, true))
 // 今天的记录只显示时分秒，不是今天的才带日期；悬停时间仍可看到完整时间。
 const showDate = computed(
-  () => new Date(props.row.completed_at_ms).toDateString() !== new Date().toDateString(),
+  () => new Date(props.row.started_at_ms).toDateString() !== new Date().toDateString(),
 )
 const pricingMode = computed(() =>
   props.row.pricing_mode === 'standard' ? '' : (props.row.pricing_mode ?? ''),

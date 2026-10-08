@@ -62,6 +62,7 @@ export interface LogColumn {
 // 名称类列保留伸缩。表头与结果徽标随界面语言变长，由页面按当前语言的文字补足。
 const definitions: readonly [LogColumnId, number, LogColumnSection, boolean, boolean?, number?][] =
   [
+    // 保留字段 ID 以兼容已保存的列配置；时间列展示请求开始时间。
     ['completed_at_ms', 64, 'request', true],
     ['status', 56, 'result', true],
     ['status_code', 56, 'result', true],
