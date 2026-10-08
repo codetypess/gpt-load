@@ -996,6 +996,7 @@ export default {
         actions: 'Actions',
       },
       status: {
+        processing: 'Processing',
         success: 'Success',
         error: 'Error',
         incomplete: 'Incomplete',
