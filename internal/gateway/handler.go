@@ -494,6 +494,7 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		)
 		recorder.clientIP = requestPeerIP(ginContext.Request)
 		recorder.accessKeyMultiplier = accessKey.PriceMultiplier
+		recorder.emitProcessing()
 		defer func() {
 			recorder.completeMissingOutcome(
 				ginContext.Writer.Written(),
@@ -694,6 +695,10 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 	recorder.setUsageApplicable(metadata.ObserveUsage)
 	recorder.setPricingMode(metadata.PricingMode)
 	recorder.setUsageDiagnostics(metadata.UsageDiagnostics)
+	// The protocol was known at route admission; the client model becomes
+	// available only after inspecting the request body. Refresh the processing
+	// row now so it is informative even while scheduler selection is pending.
+	recorder.emitProcessing()
 
 	allowedCredentialIDs := make(map[uint]struct{}, len(allowedCredentialRefs))
 	for credentialID := range allowedCredentialRefs {
@@ -1147,6 +1152,7 @@ func (handler *Handler) executeAttempts(
 			continue
 		}
 		recorder.startTiming()
+		recorder.emitProcessingRoute(selection.GroupID, selection.ChannelID, selection.CredentialID)
 		prepared := prepareRequest(selection)
 		if prepared.err != nil {
 			if errors.Is(prepared.err, requestredact.ErrContent) {

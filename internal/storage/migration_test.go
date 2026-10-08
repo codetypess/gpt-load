@@ -41,6 +41,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0027,
 		migrationfiles.ID0028,
 		migrationfiles.ID0029,
+		migrationfiles.ID0030,
 	}
 	if len(migrations) != len(wantIDs) {
 		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
@@ -50,6 +51,76 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 			entry.Validate == nil || entry.ValidateRecoverable == nil {
 			t.Fatalf("migration registry entry %d = %#v", index, entry)
 		}
+	}
+}
+
+func TestLegacyRequestLogProcessing0024UpgradesWithoutRenumbering(t *testing.T) {
+	db := openInternalMigrationTestDatabase(t)
+	legacy := append([]migration(nil), migrations[:23]...)
+	legacy = append(legacy, migration{
+		ID:                  "0024_request_log_processing",
+		Up:                  migrationfiles.Up0030,
+		Validate:            migrationfiles.Validate0030,
+		ValidateRecoverable: migrationfiles.ValidateRecoverable0030,
+	})
+	if err := applyMigrationRegistry(db, legacy); err != nil {
+		t.Fatalf("apply local 0024: %v", err)
+	}
+	if err := db.Table("request_logs").Create(map[string]any{
+		"id": "legacy-processing", "started_at_ms": 1000, "completed_at_ms": 1000,
+		"access_key_id": 1, "protocol": "openai-responses", "client_model": "test", "upstream_model": "test",
+		"status": "processing", "status_code": 0, "duration_ms": 0, "error_summary": "",
+	}).Error; err != nil {
+		t.Fatalf("seed local processing log: %v", err)
+	}
+	for range 2 {
+		if err := AutoMigrate(db); err != nil {
+			t.Fatalf("upgrade local 0024: %v", err)
+		}
+	}
+	var ids []string
+	if err := db.Table(migrationLedgerTable).Order("id").Pluck("id", &ids).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 30 || ids[23] != "0024_request_log_processing" || ids[29] != migrationfiles.ID0030 {
+		t.Fatalf("upgraded migration ledger = %v", ids)
+	}
+	var row struct {
+		StartedAtMS int64
+		Status      string
+	}
+	if err := db.Table("request_logs").Where("id = ?", "legacy-processing").Take(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.StartedAtMS != 1000 || row.Status != "processing" {
+		t.Fatalf("legacy processing log changed: %+v", row)
+	}
+}
+
+func TestLegacyRequestLogProcessing0024ResumeMarker(t *testing.T) {
+	db := openInternalMigrationTestDatabase(t)
+	if err := applyMigrationRegistry(db, migrations[:23]); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("ALTER TABLE request_logs ADD COLUMN started_at_ms BIGINT NOT NULL DEFAULT 0").Error; err != nil {
+		t.Fatal(err)
+	}
+	marker := migrationResumeMarker("0024_request_log_processing")
+	if err := db.Create(&schemaMigration{ID: marker}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := AutoMigrate(db); err != nil {
+		t.Fatalf("resume legacy 0024: %v", err)
+	}
+	if err := migrationfiles.Validate0030(db); err != nil {
+		t.Fatalf("processing schema after resume: %v", err)
+	}
+	var count int64
+	if err := db.Model(&schemaMigration{}).Where("id = ?", marker).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("legacy resume marker remains")
 	}
 }
 

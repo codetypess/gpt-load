@@ -29,9 +29,11 @@ func (schemaMigration) TableName() string {
 
 type migration struct {
 	ID                  string
+	LegacyID            string
 	Up                  func(*gorm.DB) error
 	Validate            func(*gorm.DB) error
 	ValidateCurrent     func(*gorm.DB) error
+	ValidateLegacy      func(*gorm.DB) error
 	ValidateRecoverable func(*gorm.DB) error
 }
 
@@ -114,12 +116,13 @@ var migrations = []migration{
 	{ID: migrationfiles.ID0021, Up: migrationfiles.Up0021, Validate: migrationfiles.Validate0021, ValidateRecoverable: migrationfiles.ValidateRecoverable0021},
 	{ID: migrationfiles.ID0022, Up: migrationfiles.Up0022, Validate: migrationfiles.Validate0022, ValidateRecoverable: migrationfiles.ValidateRecoverable0022},
 	{ID: migrationfiles.ID0023, Up: migrationfiles.Up0023, Validate: migrationfiles.Validate0023, ValidateRecoverable: migrationfiles.ValidateRecoverable0023},
-	{ID: migrationfiles.ID0024, Up: migrationfiles.Up0024, Validate: migrationfiles.Validate0024, ValidateCurrent: migrationfiles.ValidateCurrent0024, ValidateRecoverable: migrationfiles.ValidateRecoverable0024},
+	{ID: migrationfiles.ID0024, LegacyID: "0024_request_log_processing", Up: migrationfiles.Up0024, Validate: migrationfiles.Validate0024, ValidateCurrent: migrationfiles.ValidateCurrent0024, ValidateLegacy: migrationfiles.Validate0030, ValidateRecoverable: migrationfiles.ValidateRecoverable0024},
 	{ID: migrationfiles.ID0025, Up: migrationfiles.Up0025, Validate: migrationfiles.Validate0025, ValidateRecoverable: migrationfiles.ValidateRecoverable0025},
 	{ID: migrationfiles.ID0026, Up: migrationfiles.Up0026, Validate: migrationfiles.Validate0026, ValidateRecoverable: migrationfiles.ValidateRecoverable0026},
 	{ID: migrationfiles.ID0027, Up: migrationfiles.Up0027, Validate: migrationfiles.Validate0027, ValidateRecoverable: migrationfiles.ValidateRecoverable0027},
 	{ID: migrationfiles.ID0028, Up: migrationfiles.Up0028, Validate: migrationfiles.Validate0028, ValidateRecoverable: migrationfiles.ValidateRecoverable0028},
 	{ID: migrationfiles.ID0029, Up: migrationfiles.Up0029, Validate: migrationfiles.Validate0029, ValidateRecoverable: migrationfiles.ValidateRecoverable0029},
+	{ID: migrationfiles.ID0030, Up: migrationfiles.Up0030, Validate: migrationfiles.Validate0030, ValidateRecoverable: migrationfiles.ValidateRecoverable0030},
 }
 
 func applyMigrations(db *gorm.DB) error {
@@ -210,13 +213,22 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 	}
 	if len(applied) > 0 {
 		lastIndex := len(applied) - 1
-		if lastIndex < len(entries) &&
-			applied[lastIndex] == migrationResumeMarker(entries[lastIndex].ID) {
-			applied = applied[:lastIndex]
+		if lastIndex < len(entries) {
+			entry := entries[lastIndex]
+			if applied[lastIndex] == migrationResumeMarker(entry.ID) {
+				applied = applied[:lastIndex]
+			} else if entry.LegacyID != "" && applied[lastIndex] == migrationResumeMarker(entry.LegacyID) {
+				// A previous local 0024 may have stopped mid-DDL on MySQL. Its
+				// idempotent processing DDL is completed by 0030 below.
+				if err := db.Table(migrationLedgerTable).Where("id = ?", applied[lastIndex]).Delete(&schemaMigration{}).Error; err != nil {
+					return fmt.Errorf("remove legacy migration resume marker: %w", err)
+				}
+				applied = applied[:lastIndex]
+			}
 		}
 	}
 	for index, id := range applied {
-		if index >= len(entries) || entries[index].ID != id {
+		if index >= len(entries) || (entries[index].ID != id && entries[index].LegacyID != id) {
 			return fmt.Errorf("schema_migrations contains unknown or non-contiguous migration %q", id)
 		}
 	}
@@ -227,7 +239,9 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 		}
 		for index, id := range applied {
 			validator := entries[index].Validate
-			if entries[index].ValidateCurrent != nil {
+			if id == entries[index].LegacyID && entries[index].ValidateLegacy != nil {
+				validator = entries[index].ValidateLegacy
+			} else if entries[index].ValidateCurrent != nil {
 				validator = entries[index].ValidateCurrent
 			}
 			if err := inspection.validate(validator); err != nil {
