@@ -39,6 +39,19 @@ func TestMapEventClientIP(t *testing.T) {
 	}
 }
 
+func TestMapProcessingEventClientIP(t *testing.T) {
+	row, err := mapEvent(redact.New(), telemetry.RequestEvent{
+		RequestID: "processing", CompletedAt: time.Now(), ClientIP: "::ffff:192.0.2.1",
+		Status: telemetry.RequestStatusProcessing,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ClientIP == nil || *row.ClientIP != "192.0.2.1" {
+		t.Fatalf("processing IP = %v, want 192.0.2.1", row.ClientIP)
+	}
+}
+
 func TestServiceListFiltersExactClientIPBeforePagination(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	completed := time.Now()
