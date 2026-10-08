@@ -2,7 +2,6 @@ import type { QueryClient } from '@tanstack/vue-query'
 import { inject, reactive, readonly, type InjectionKey } from 'vue'
 
 import { getAuthSession } from '@modern/api/auth'
-import { clearFrontendPreference } from '@shared/frontend/preference'
 import type { ApiClient } from '@shared/http/client'
 import { RequestCancelledError } from '@shared/http/errors'
 import type { AuthPrincipalType, AuthSessionPayload } from '@shared/http/types'
@@ -80,7 +79,6 @@ export function createAuthSession(deps: {
     credential = ''
     storeCredential(deps.localStorage, '')
     storeCredential(deps.sessionStorage, '')
-    clearFrontendPreference()
     state.phase = 'anonymous'
     state.principalType = null
     state.requestBodyRecording = null
