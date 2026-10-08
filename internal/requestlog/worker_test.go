@@ -540,6 +540,16 @@ func TestWriteBatchInsertsOnlyNewRequestLogsAndAggregatesUsage(t *testing.T) {
 		stat.EstimatedCostNanoUSD != 2_250_000_000 {
 		t.Fatalf("UsageStat = %+v, want baseline plus only two new rows", stat)
 	}
+	var speedStat models.UsageModelSpeedStat
+	if err := db.Where(
+		"bucket_start_ms = ? AND access_key_id = ? AND group_id = ? AND model = ?",
+		hour.UnixMilli(), 1, 7, "aggregate-model",
+	).Take(&speedStat).Error; err != nil {
+		t.Fatalf("query UsageModelSpeedStat: %v", err)
+	}
+	if speedStat.RequestCount != 2 || speedStat.OutputTokens != 16 || speedStat.DurationMS != 20 {
+		t.Fatalf("UsageModelSpeedStat = %+v, want only two new rows", speedStat)
+	}
 
 	if err := (&gormBatchWriter{db: db}).WriteBatch(context.Background(), rows); err != nil {
 		t.Fatalf("replay WriteBatch() error = %v", err)
@@ -550,6 +560,13 @@ func TestWriteBatchInsertsOnlyNewRequestLogsAndAggregatesUsage(t *testing.T) {
 	}
 	if !reflect.DeepEqual(replayedStat, stat) {
 		t.Fatalf("replay changed UsageStat: got %+v want %+v", replayedStat, stat)
+	}
+	var replayedSpeedStat models.UsageModelSpeedStat
+	if err := db.First(&replayedSpeedStat, speedStat.ID).Error; err != nil {
+		t.Fatalf("query replayed UsageModelSpeedStat: %v", err)
+	}
+	if !reflect.DeepEqual(replayedSpeedStat, speedStat) {
+		t.Fatalf("replay changed UsageModelSpeedStat: got %+v want %+v", replayedSpeedStat, speedStat)
 	}
 }
 

@@ -217,9 +217,10 @@ const (
 
 type UsageQuery struct {
 	// SelfScoped 控制只读用户视图，与管理员的密钥筛选独立。
-	SelfScoped bool
-	FromMS     int64
-	ToMS       int64
+	SelfScoped       bool
+	IncludeModelSpeed bool
+	FromMS           int64
+	ToMS             int64
 	// 供管理 API 描述时间桶；QueryUsage 始终从 FromMS/ToMS 推导，不接受覆盖。
 	Granularity   UsageGranularity
 	BucketWidthMS int64
@@ -253,6 +254,21 @@ type UsageSeriesPoint struct {
 	UsageAggregate
 }
 
+// UsageModelSpeedPoint is one model's weighted output rate source for a time bucket.
+// Tokens per second is derived as OutputTokens / (DurationMS / 1000).
+type UsageModelSpeedPoint struct {
+	BucketStartMS int64
+	BucketEndMS   int64
+	RequestCount  int64
+	OutputTokens  int64
+	DurationMS    int64
+}
+
+type UsageModelSpeedSeries struct {
+	Model  string
+	Points []UsageModelSpeedPoint
+}
+
 type UsageDistributionItem struct {
 	GroupID     uint
 	AccessKeyID uint
@@ -276,6 +292,7 @@ type UsageDistribution struct {
 type UsageReport struct {
 	Summary       UsageAggregate
 	Series        []UsageSeriesPoint
+	ModelSpeed    []UsageModelSpeedSeries
 	Distributions UsageDistributions
 }
 

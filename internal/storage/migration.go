@@ -123,25 +123,8 @@ var migrations = []migration{
 	{ID: migrationfiles.ID0028, Up: migrationfiles.Up0028, Validate: migrationfiles.Validate0028, ValidateRecoverable: migrationfiles.ValidateRecoverable0028},
 	{ID: migrationfiles.ID0029, Up: migrationfiles.Up0029, Validate: migrationfiles.Validate0029, ValidateRecoverable: migrationfiles.ValidateRecoverable0029},
 	{ID: migrationfiles.ID0030, LegacyID: "0030_request_log_processing", Up: migrationfiles.Up0030, Validate: migrationfiles.Validate0030, ValidateLegacy: migrationfiles.Validate0031, ValidateRecoverable: migrationfiles.ValidateRecoverable0030},
-	{ID: migrationfiles.ID0031, Up: upRequestLogProcessing0031, Validate: validateRequestLogProcessing0031, ValidateRecoverable: migrationfiles.ValidateRecoverable0031},
-}
-
-func upRequestLogProcessing0031(db *gorm.DB) error {
-	// A local 0030 ledger entry predates upstream request body recording.
-	// Complete that schema too while preserving the existing ledger ID.
-	if !db.Migrator().HasTable("request_log_bodies") {
-		if err := migrationfiles.Up0030(db); err != nil {
-			return err
-		}
-	}
-	return migrationfiles.Up0031(db)
-}
-
-func validateRequestLogProcessing0031(db *gorm.DB) error {
-	if err := migrationfiles.Validate0030(db); err != nil {
-		return err
-	}
-	return migrationfiles.Validate0031(db)
+	{ID: migrationfiles.ID0031, LegacyID: "0031_usage_model_speed_stats", Up: migrationfiles.Up0031, Validate: migrationfiles.Validate0031, ValidateLegacy: migrationfiles.Validate0032, ValidateRecoverable: migrationfiles.ValidateRecoverable0031},
+	{ID: migrationfiles.ID0032, Up: migrationfiles.Up0032, Validate: migrationfiles.Validate0032, ValidateRecoverable: migrationfiles.ValidateRecoverable0032},
 }
 
 func applyMigrations(db *gorm.DB) error {
@@ -266,6 +249,19 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 			if err := inspection.validate(validator); err != nil {
 				return fmt.Errorf("validate applied migration %s: %w", id, err)
 			}
+		}
+	}
+
+	// Local databases already at 0030 or later lack upstream body recording.
+	// Complete its idempotent DDL while retaining their historical ledger IDs.
+	if len(applied) >= 30 && applied[29] == "0030_request_log_processing" && entries[29].ID == migrationfiles.ID0030 {
+		if !db.Migrator().HasTable("request_log_bodies") {
+			if err := migrationfiles.Up0030(db); err != nil {
+				return fmt.Errorf("complete request body recording for local migration ledger: %w", err)
+			}
+		}
+		if err := validateMigrationAfterDDL(db, migrationfiles.Validate0030); err != nil {
+			return fmt.Errorf("validate request body recording for local migration ledger: %w", err)
 		}
 	}
 

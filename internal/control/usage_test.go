@@ -76,6 +76,40 @@ func TestUsageAPIUsesSuppliedWindowAndPreservesFilters(t *testing.T) {
 	}
 }
 
+func TestMapUsageResponsePreservesPerModelSpeedSources(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	from := time.Date(2026, time.October, 9, 13, 17, 0, 0, time.UTC).UnixMilli()
+	query := requestlog.UsageQuery{FromMS: from, ToMS: from + int64(time.Hour/time.Millisecond)}
+	report := requestlog.UsageReport{
+		ModelSpeed: []requestlog.UsageModelSpeedSeries{{
+			Model: "gpt-test",
+			Points: []requestlog.UsageModelSpeedPoint{{
+				BucketStartMS: from + int64(3*time.Minute/time.Millisecond),
+				BucketEndMS:   from + int64(8*time.Minute/time.Millisecond),
+				RequestCount:  2,
+				OutputTokens:  400,
+				DurationMS:    4_000,
+			}},
+		}},
+		Distributions: usageTestDistributions(requestlog.UsageAggregate{}, requestlog.UsageDistribution{}),
+	}
+	result, err := fixture.service.mapUsageResponse(query.ToMS, query, report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.ModelSpeed) != 1 || result.ModelSpeed[0].Model != "gpt-test" ||
+		len(result.ModelSpeed[0].Points) != 1 || result.ModelSpeed[0].Points[0].OutputTokens != 400 ||
+		result.ModelSpeed[0].Points[0].DurationMS != 4_000 || result.ModelSpeed[0].Points[0].RequestCount != 2 {
+		t.Fatalf("model speed response = %#v", result.ModelSpeed)
+	}
+
+	report.ModelSpeed[0].Points[0].DurationMS = 0
+	if _, err := fixture.service.mapUsageResponse(query.ToMS, query, report); err == nil {
+		t.Fatal("mapUsageResponse() accepted a zero-duration speed point")
+	}
+}
+
 func TestUsageAPIReturnsDistributionWithoutCredentialIdentity(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 12, 8, 0, 0, 0, time.UTC)
@@ -572,6 +606,8 @@ func TestUsageAPIRejectsStrictInvalidQueriesWithoutCallingReader(t *testing.T) {
 		{query: "distribution=credential", code: "BAD_REQUEST"},
 		{query: "distribution_metric=", code: "BAD_REQUEST"},
 		{query: "distribution_metric=tokens", code: "BAD_REQUEST"},
+		{query: "include_model_speed=1", code: "BAD_REQUEST"},
+		{query: "include_model_speed=true&include_model_speed=false", code: "BAD_REQUEST"},
 		{
 			query: "distribution_metric=cost&distribution_metric=requests",
 			code:  "BAD_REQUEST",

@@ -3,9 +3,9 @@ import { computed } from 'vue'
 import type { UsageReport } from '@modern/api/usage'
 import { AppSvg } from '@modern/components/ui'
 import { cacheRate, chartPoints, successRate } from './usage-display'
-import type { TrendMetric } from './usage-state'
+import type { AggregateTrendMetric } from './usage-state'
 
-const props = defineProps<{ report: UsageReport; metric: TrendMetric | 'success' }>()
+const props = defineProps<{ report: UsageReport; metric: AggregateTrendMetric | 'success' }>()
 const rate = computed(() => props.metric === 'success' || props.metric === 'cache')
 const ratio = computed(() =>
   props.metric === 'success' ? successRate(props.report.summary) : cacheRate(props.report.summary),
