@@ -93,6 +93,8 @@ func TestSharedAPIResponseFieldsMatchClassicContracts(t *testing.T) {
 		{"health", "requestLogFields", requestLogHealthResponse{}},
 		{"request-logs", "itemFields", requestLogItemResponse{}},
 		{"usage", "aggregateFields", usageAggregateResponse{}},
+		{"usage", "modelSpeedPointFields", usageModelSpeedPointResponse{}},
+		{"usage", "modelSpeedSeriesFields", usageModelSpeedSeriesResponse{}},
 		{"usage", "distributionAggregateFields", usageDistributionAggregateResponse{}},
 		{"usage", "reportFields", usageResponse{}},
 		{"models", "collectionFields", ProjectModelListResponse{}},

@@ -1,8 +1,9 @@
 import type { LocationQuery } from 'vue-router'
 import { usageFilterKeys, usageMetrics, type UsageFilters } from '@modern/api/usage'
 import { readTimeRange, timeRangeQuery, type TimeRangeState } from '@modern/app/time-range'
-export const trendMetrics = ['requests', 'tokens', 'cache', 'cost'] as const
+export const trendMetrics = ['requests', 'tokens', 'cache', 'cost', 'speed'] as const
 export type TrendMetric = (typeof trendMetrics)[number]
+export type AggregateTrendMetric = Exclude<TrendMetric, 'speed'>
 export const usageStateKeys = [
   ...usageFilterKeys,
   'model',

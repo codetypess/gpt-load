@@ -6,9 +6,9 @@ import { AppSvg, AppTooltip } from '@modern/components/ui'
 import { dateFormatter, numberFormatter } from '@modern/components/ui/intl-formatters'
 import { formatCompactNumber } from '@modern/components/ui/format'
 import { chartPoints, formatUsageCost, inputTokens, percentage } from './usage-display'
-import type { TrendMetric } from './usage-state'
+import type { AggregateTrendMetric } from './usage-state'
 
-const props = defineProps<{ report: UsageReport; metric: TrendMetric }>()
+const props = defineProps<{ report: UsageReport; metric: AggregateTrendMetric }>()
 const { t, locale } = useI18n()
 const host = ref<HTMLElement>()
 const width = ref(720)
