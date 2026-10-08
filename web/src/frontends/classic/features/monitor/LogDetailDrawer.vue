@@ -186,7 +186,8 @@ watch(
   },
 )
 
-function statusTone(status: string): 'success' | 'danger' | 'warning' | 'neutral' {
+function statusTone(status: string): 'success' | 'info' | 'danger' | 'warning' | 'neutral' {
+  if (status === 'processing') return 'info'
   if (status === 'success') return 'success'
   if (status === 'error') return 'danger'
   if (status === 'incomplete') return 'warning'
@@ -456,7 +457,7 @@ function decisionRuleLabel(ruleID: string): string {
           >
         </StatusBadge>
         <span class="log-detail__time">
-          <AppDateTime :instant="log.completed_at_ms" :locale="locale" precision="second" />
+          <AppDateTime :instant="log.started_at_ms" :locale="locale" precision="second" />
         </span>
         <span class="log-detail__request-id">
           <OverflowTooltip as="code" :content="log.request_id">
