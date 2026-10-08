@@ -129,6 +129,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 	}()
 	h := s.handler
 	recorder := s.newTurnRecorder(turn)
+	recorder.emitProcessing()
 	requestID := recorder.requestID
 	admission := requestAccessQuotaAdmission{accessKeyID: s.keyID}
 	var finishOnce sync.Once
@@ -563,6 +564,7 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		recorder.setUsageApplicable(effective.metadata.ObserveUsage)
 		recorder.setPricingMode(effective.metadata.PricingMode)
 		recorder.setUsageDiagnostics(effective.metadata.UsageDiagnostics)
+		recorder.emitProcessingRoute(selection.GroupID, selection.ChannelID, selection.CredentialID)
 		recorder.freezeNextAttemptPricing(h.freezeAttemptPricing(selection, effective.metadata, true, key.PriceMultiplier))
 		if sequence == 1 {
 			kind := affinity.kind
