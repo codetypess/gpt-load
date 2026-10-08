@@ -44,6 +44,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0030,
 		migrationfiles.ID0031,
 		migrationfiles.ID0032,
+		migrationfiles.ID0033,
 	}
 	if len(migrations) != len(wantIDs) {
 		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
@@ -84,7 +85,7 @@ func TestLegacyRequestLogProcessing0024UpgradesWithoutRenumbering(t *testing.T) 
 	if err := db.Table(migrationLedgerTable).Order("id").Pluck("id", &ids).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(ids) != 32 || ids[23] != "0024_request_log_processing" || ids[29] != migrationfiles.ID0030 || ids[30] != migrationfiles.ID0031 || ids[31] != migrationfiles.ID0032 {
+	if len(ids) != len(migrations) || ids[23] != "0024_request_log_processing" || ids[29] != migrationfiles.ID0030 || ids[30] != migrationfiles.ID0031 || ids[31] != migrationfiles.ID0032 {
 		t.Fatalf("upgraded migration ledger = %v", ids)
 	}
 	var row struct {
@@ -172,7 +173,7 @@ func TestLegacyRequestLogProcessing0030UpgradesWithoutRenumbering(t *testing.T) 
 			if resume {
 				want0030 = migrationfiles.ID0030
 			}
-			if len(ids) != 32 || ids[29] != want0030 || ids[30] != migrationfiles.ID0031 || ids[31] != migrationfiles.ID0032 {
+			if len(ids) != len(migrations) || ids[29] != want0030 || ids[30] != migrationfiles.ID0031 || ids[31] != migrationfiles.ID0032 {
 				t.Fatalf("upgraded migration ledger = %v", ids)
 			}
 			var row struct {

@@ -48,6 +48,19 @@ export interface UsageAggregateDto {
   pricing_partial_count: number
 }
 
+export interface UsageModelSpeedPointDto {
+  bucket_start_ms: number
+  bucket_end_ms: number
+  request_count: number
+  output_tokens: number
+  duration_ms: number
+}
+
+export interface UsageModelSpeedSeriesDto {
+  model: string
+  points: UsageModelSpeedPointDto[]
+}
+
 export interface UsageDistributionAggregateDto {
   request_count: number
   total_tokens: number
@@ -62,6 +75,7 @@ export interface UsageReportDto {
   observed_at_ms: number
   summary: UsageAggregateDto
   series: Array<UsageAggregateDto & { bucket_start_ms: number; bucket_end_ms: number }>
+  model_speed: UsageModelSpeedSeriesDto[]
   distributions: {
     group?: Record<UsageDistributionMetric, UsageDistributionDto>
     model: Record<UsageDistributionMetric, UsageDistributionDto>
@@ -105,6 +119,14 @@ const aggregateKeys = [
   'pricing_partial_count',
 ] as const
 const aggregateFields = [...aggregateKeys, 'estimated_cost_nano_usd'] as const
+const modelSpeedPointFields = [
+  'bucket_start_ms',
+  'bucket_end_ms',
+  'request_count',
+  'output_tokens',
+  'duration_ms',
+] as const
+const modelSpeedSeriesFields = ['model', 'points'] as const
 const distributionAggregateFields = [
   'request_count',
   'total_tokens',
@@ -118,6 +140,7 @@ const reportFields = [
   'observed_at_ms',
   'summary',
   'series',
+  'model_speed',
   'distributions',
   'collection_health',
 ] as const
@@ -244,6 +267,48 @@ export function projectUsageReport(value: unknown): UsageReportDto {
       bucket_end_ms: bucketEndMS,
     }
   })
+  const speedModels = new Set<string>()
+  const modelSpeed = projectArray(record.model_speed, (value) => {
+    const speedSeries = projectRecord(value)
+    assertNoSecretLikeFields(speedSeries, modelSpeedSeriesFields)
+    const model = projectString(speedSeries.model)
+    if (
+      new TextEncoder().encode(model).length > 255 ||
+      model !== model.trim() ||
+      /[\p{Cc}]/u.test(model) ||
+      speedModels.has(model)
+    ) {
+      invalidResponse()
+    }
+    speedModels.add(model)
+    let previousBucketStartMS = -1
+    const points = projectArray(speedSeries.points, (pointValue) => {
+      const point = projectRecord(pointValue)
+      assertNoSecretLikeFields(point, modelSpeedPointFields)
+      const bucketStartMS = projectEpochMilliseconds(point.bucket_start_ms)
+      const bucketEndMS = projectEpochMilliseconds(point.bucket_end_ms)
+      const alignedBucketStartMS = Math.floor(bucketStartMS / bucketWidthMs) * bucketWidthMs
+      if (
+        bucketStartMS !== Math.max(alignedBucketStartMS, rangeFromMS) ||
+        bucketEndMS !== Math.min(alignedBucketStartMS + bucketWidthMs, rangeToMS) ||
+        bucketEndMS <= bucketStartMS ||
+        bucketStartMS <= previousBucketStartMS
+      ) {
+        invalidResponse()
+      }
+      previousBucketStartMS = bucketStartMS
+      return {
+        bucket_start_ms: bucketStartMS,
+        bucket_end_ms: bucketEndMS,
+        request_count: projectSafeInteger(point.request_count, { minimum: 1 }),
+        output_tokens: projectSafeInteger(point.output_tokens, { minimum: 1 }),
+        duration_ms: projectSafeInteger(point.duration_ms, { minimum: 1 }),
+      }
+    })
+    if (points.length === 0) invalidResponse()
+    return { model, points }
+  })
+  if (modelSpeed.length > 5) invalidResponse()
   const distributionsRecord = projectRecord(record.distributions)
   assertNoSecretLikeFields(distributionsRecord, ['group', 'model', 'access_key'])
 
@@ -388,6 +453,7 @@ export function projectUsageReport(value: unknown): UsageReportDto {
     observed_at_ms: observedAtMS,
     summary,
     series,
+    model_speed: modelSpeed,
     distributions: {
       ...(groupDistributions === undefined ? {} : { group: groupDistributions }),
       model: modelDistributions,
@@ -420,6 +486,7 @@ export async function getUsageReport(
   const params = new URLSearchParams([
     ['from_ms', String(normalized.from_ms)],
     ['to_ms', String(normalized.to_ms)],
+    ['include_model_speed', 'true'],
   ])
   if (normalized.access_key_id !== undefined)
     params.append('access_key_id', String(normalized.access_key_id))

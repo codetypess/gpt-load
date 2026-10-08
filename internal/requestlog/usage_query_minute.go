@@ -9,6 +9,12 @@ import (
 
 // 将请求级已保存数据投影为小时聚合相同的统计字段，在数据库内复用总览和分布查询。
 func usageRequestLogScope(db *gorm.DB, input UsageQuery, groupIDs ...uint) *gorm.DB {
+	logs := usageRequestLogBaseScope(db, input, groupIDs...)
+	projection := logs.Select(usageRequestLogProjection, UsageFiveMinuteBucketMS, UsageFiveMinuteBucketMS)
+	return db.Session(&gorm.Session{NewDB: true}).Table("(? UNION ALL ? UNION ALL ?) AS usage_rows", projection, decisionRequestScope(db, input, groupIDs...), auditRequestScope(db, input, groupIDs...))
+}
+
+func usageRequestLogBaseScope(db *gorm.DB, input UsageQuery, groupIDs ...uint) *gorm.DB {
 	logs := db.Session(&gorm.Session{NewDB: true}).Model(&models.RequestLog{}).
 		Where("completed_at_ms >= ? AND completed_at_ms < ?", input.FromMS, input.ToMS).
 		Where("attempt_count > 0").
@@ -32,8 +38,7 @@ func usageRequestLogScope(db *gorm.DB, input UsageQuery, groupIDs ...uint) *gorm
 	if input.UpstreamModel != "" {
 		logs = logs.Where("upstream_model = ?", input.UpstreamModel)
 	}
-	projection := logs.Select(usageRequestLogProjection, UsageFiveMinuteBucketMS, UsageFiveMinuteBucketMS)
-	return db.Session(&gorm.Session{NewDB: true}).Table("(? UNION ALL ? UNION ALL ?) AS usage_rows", projection, decisionRequestScope(db, input, groupIDs...), auditRequestScope(db, input, groupIDs...))
+	return logs
 }
 
 // 与 usageStatDelta.addRow 保持一致：只统计已完成的最终归属，每个请求仅计一次；

@@ -91,3 +91,18 @@ func TestUsageAPIRequiresExplicitTimeRange(t *testing.T) {
 		})
 	}
 }
+
+func TestUsageAPIParsesOptionalModelSpeedFlag(t *testing.T) {
+	t.Parallel()
+	reader := &recordingUsageStatReader{}
+	engine, _ := newUsageTestEngine(t, time.Now(), reader)
+	for _, value := range []string{"true", "false"} {
+		recorder := performUsageRequest(engine, "test-auth-key", "from_ms=0&to_ms=1&include_model_speed="+value)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("include_model_speed=%s response = %d %s", value, recorder.Code, recorder.Body.String())
+		}
+	}
+	if len(reader.queries) != 2 || !reader.queries[0].IncludeModelSpeed || reader.queries[1].IncludeModelSpeed {
+		t.Fatalf("model speed flags = %#v", reader.queries)
+	}
+}

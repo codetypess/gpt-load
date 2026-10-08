@@ -53,6 +53,13 @@ func (service *Service) QueryUsage(ctx context.Context, input UsageQuery) (Usage
 		if err != nil {
 			return err
 		}
+		modelSpeed := []UsageModelSpeedSeries{}
+		if input.IncludeModelSpeed {
+			modelSpeed, err = queryUsageModelSpeed(connection, input, bucketWidthMS)
+			if err != nil {
+				return err
+			}
+		}
 		distributions, err := queryUsageDistributions(
 			scope.Session(&gorm.Session{}), summary, input.SelfScoped,
 		)
@@ -60,7 +67,7 @@ func (service *Service) QueryUsage(ctx context.Context, input UsageQuery) (Usage
 			return err
 		}
 		report = UsageReport{
-			Summary: summary, Series: series, Distributions: distributions,
+			Summary: summary, Series: series, ModelSpeed: modelSpeed, Distributions: distributions,
 		}
 		return nil
 	})

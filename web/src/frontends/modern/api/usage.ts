@@ -46,6 +46,17 @@ export interface UsageDistribution {
   items: UsageItem[]
   other: UsageItem | null
 }
+export interface UsageModelSpeedPoint {
+  bucket_start_ms: number
+  bucket_end_ms: number
+  request_count: number
+  output_tokens: number
+  duration_ms: number
+}
+export interface UsageModelSpeedSeries {
+  model: string
+  points: UsageModelSpeedPoint[]
+}
 export interface UsageReport {
   from_ms: number
   to_ms: number
@@ -53,6 +64,7 @@ export interface UsageReport {
   bucket_width_ms: number
   summary: UsageAggregate
   series: (UsageAggregate & { bucket_start_ms: number; bucket_end_ms: number })[]
+  model_speed: UsageModelSpeedSeries[]
   distributions: Partial<Record<UsageDimension, Record<UsageMetric, UsageDistribution>>>
   collectionIncomplete: boolean
 }
@@ -95,8 +107,10 @@ export async function getUsage(
   client: ApiClient,
   filters: UsageFilters & { from_ms: string; to_ms: string },
   signal: AbortSignal,
+  includeModelSpeed = false,
 ): Promise<UsageReport> {
   const params = new URLSearchParams({ from_ms: filters.from_ms, to_ms: filters.to_ms })
+  if (includeModelSpeed) params.set('include_model_speed', 'true')
   for (const key of usageFilterKeys) if (filters[key]) params.set(key, filters[key]!)
   const row = record(await client.request(`/api/usage?${params}`, { signal }))
   const from = integer(row.from_ms),
@@ -119,6 +133,45 @@ export async function getUsage(
     previousEnd = end
     return { ...aggregate(point), bucket_start_ms: start, bucket_end_ms: end }
   })
+  const speedModels = new Set<string>()
+  const modelSpeed = list(row.model_speed).map((value) => {
+    const speedSeries = record(value)
+    const model = text(speedSeries.model)
+    if (
+      !model ||
+      model !== model.trim() ||
+      new TextEncoder().encode(model).length > 255 ||
+      /[\u0000-\u001f\u007f]/u.test(model) ||
+      speedModels.has(model)
+    )
+      throw new InvalidResponseError()
+    speedModels.add(model)
+    let previousStart = -1
+    const points = list(speedSeries.points).map((pointValue) => {
+      const point = record(pointValue)
+      const start = integer(point.bucket_start_ms),
+        end = integer(point.bucket_end_ms)
+      const alignedStart = Math.floor(start / width) * width
+      if (
+        start !== Math.max(from, alignedStart) ||
+        end !== Math.min(to, alignedStart + width) ||
+        end <= start ||
+        start <= previousStart
+      )
+        throw new InvalidResponseError()
+      previousStart = start
+      return {
+        bucket_start_ms: start,
+        bucket_end_ms: end,
+        request_count: integer(point.request_count, 1),
+        output_tokens: integer(point.output_tokens, 1),
+        duration_ms: integer(point.duration_ms, 1),
+      }
+    })
+    if (!points.length) throw new InvalidResponseError()
+    return { model, points }
+  })
+  if (modelSpeed.length > 5) throw new InvalidResponseError()
   const source = record(row.distributions)
   const distributions: UsageReport['distributions'] = {}
   for (const dimension of usageDimensions) {
@@ -150,6 +203,7 @@ export async function getUsage(
     bucket_width_ms: width,
     summary: aggregate(row.summary),
     series,
+    model_speed: modelSpeed,
     distributions,
     collectionIncomplete:
       integer(health.dropped_total) > 0 || integer(health.write_failure_total) > 0,

@@ -29,12 +29,20 @@ func (schemaMigration) TableName() string {
 
 type migration struct {
 	ID                  string
-	LegacyID            string
+	Legacy              map[string]func(*gorm.DB) error
 	Up                  func(*gorm.DB) error
 	Validate            func(*gorm.DB) error
 	ValidateCurrent     func(*gorm.DB) error
-	ValidateLegacy      func(*gorm.DB) error
 	ValidateRecoverable func(*gorm.DB) error
+}
+
+func (entry migration) isLegacyResumeMarker(id string) bool {
+	for legacyID := range entry.Legacy {
+		if id == migrationResumeMarker(legacyID) {
+			return true
+		}
+	}
+	return false
 }
 
 var migrations = []migration{
@@ -116,30 +124,16 @@ var migrations = []migration{
 	{ID: migrationfiles.ID0021, Up: migrationfiles.Up0021, Validate: migrationfiles.Validate0021, ValidateRecoverable: migrationfiles.ValidateRecoverable0021},
 	{ID: migrationfiles.ID0022, Up: migrationfiles.Up0022, Validate: migrationfiles.Validate0022, ValidateRecoverable: migrationfiles.ValidateRecoverable0022},
 	{ID: migrationfiles.ID0023, Up: migrationfiles.Up0023, Validate: migrationfiles.Validate0023, ValidateRecoverable: migrationfiles.ValidateRecoverable0023},
-	{ID: migrationfiles.ID0024, LegacyID: "0024_request_log_processing", Up: migrationfiles.Up0024, Validate: migrationfiles.Validate0024, ValidateCurrent: migrationfiles.ValidateCurrent0024, ValidateLegacy: migrationfiles.Validate0032, ValidateRecoverable: migrationfiles.ValidateRecoverable0024},
+	{ID: migrationfiles.ID0024, Legacy: map[string]func(*gorm.DB) error{"0024_request_log_processing": migrationfiles.Validate0032}, Up: migrationfiles.Up0024, Validate: migrationfiles.Validate0024, ValidateCurrent: migrationfiles.ValidateCurrent0024, ValidateRecoverable: migrationfiles.ValidateRecoverable0024},
 	{ID: migrationfiles.ID0025, Up: migrationfiles.Up0025, Validate: migrationfiles.Validate0025, ValidateRecoverable: migrationfiles.ValidateRecoverable0025},
 	{ID: migrationfiles.ID0026, Up: migrationfiles.Up0026, Validate: migrationfiles.Validate0026, ValidateRecoverable: migrationfiles.ValidateRecoverable0026},
 	{ID: migrationfiles.ID0027, Up: migrationfiles.Up0027, Validate: migrationfiles.Validate0027, ValidateRecoverable: migrationfiles.ValidateRecoverable0027},
 	{ID: migrationfiles.ID0028, Up: migrationfiles.Up0028, Validate: migrationfiles.Validate0028, ValidateRecoverable: migrationfiles.ValidateRecoverable0028},
 	{ID: migrationfiles.ID0029, Up: migrationfiles.Up0029, Validate: migrationfiles.Validate0029, ValidateRecoverable: migrationfiles.ValidateRecoverable0029},
-	{ID: migrationfiles.ID0030, LegacyID: "0030_request_log_processing", Up: migrationfiles.Up0030, Validate: migrationfiles.Validate0030, ValidateLegacy: migrationfiles.Validate0032, ValidateRecoverable: migrationfiles.ValidateRecoverable0030},
-	{ID: migrationfiles.ID0031, LegacyID: "0031_request_log_processing", Up: migrationfiles.Up0031, Validate: migrationfiles.Validate0031, ValidateLegacy: migrationfiles.Validate0032, ValidateRecoverable: migrationfiles.ValidateRecoverable0031},
-	{ID: migrationfiles.ID0032, Up: upRequestLogProcessing0032, Validate: validateRequestLogProcessing0032, ValidateRecoverable: migrationfiles.ValidateRecoverable0032},
-}
-
-func upRequestLogProcessing0032(db *gorm.DB) error {
-	// Complete upstream migrations skipped by legacy local ledger entries.
-	if !db.Migrator().HasTable("request_log_bodies") {
-		if err := migrationfiles.Up0030(db); err != nil {
-			return err
-		}
-	}
-	if err := migrationfiles.Validate0031(db); err != nil {
-		if err := migrationfiles.Up0031(db); err != nil {
-			return err
-		}
-	}
-	return migrationfiles.Up0032(db)
+	{ID: migrationfiles.ID0030, Legacy: map[string]func(*gorm.DB) error{"0030_request_log_processing": migrationfiles.Validate0032}, Up: migrationfiles.Up0030, Validate: migrationfiles.Validate0030, ValidateRecoverable: migrationfiles.ValidateRecoverable0030},
+	{ID: migrationfiles.ID0031, Legacy: map[string]func(*gorm.DB) error{"0031_request_log_processing": migrationfiles.Validate0032, "0031_usage_model_speed_stats": migrationfiles.Validate0033}, Up: migrationfiles.Up0031, Validate: migrationfiles.Validate0031, ValidateRecoverable: migrationfiles.ValidateRecoverable0031},
+	{ID: migrationfiles.ID0032, Legacy: map[string]func(*gorm.DB) error{"0032_usage_model_speed_stats": migrationfiles.Validate0033}, Up: migrationfiles.Up0032, Validate: migrationfiles.Validate0032, ValidateRecoverable: migrationfiles.ValidateRecoverable0032},
+	{ID: migrationfiles.ID0033, Up: migrationfiles.Up0033, Validate: migrationfiles.Validate0033, ValidateRecoverable: migrationfiles.ValidateRecoverable0033},
 }
 
 func validateRequestLogProcessing0032(db *gorm.DB) error {
@@ -245,7 +239,7 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 			entry := entries[lastIndex]
 			if applied[lastIndex] == migrationResumeMarker(entry.ID) {
 				applied = applied[:lastIndex]
-			} else if entry.LegacyID != "" && applied[lastIndex] == migrationResumeMarker(entry.LegacyID) {
+			} else if entry.isLegacyResumeMarker(applied[lastIndex]) {
 				// A previous local processing migration may have stopped mid-DDL
 				// on MySQL. Its idempotent DDL is completed by 0032 below.
 				if err := db.Table(migrationLedgerTable).Where("id = ?", applied[lastIndex]).Delete(&schemaMigration{}).Error; err != nil {
@@ -256,7 +250,7 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 		}
 	}
 	for index, id := range applied {
-		if index >= len(entries) || (entries[index].ID != id && entries[index].LegacyID != id) {
+		if index >= len(entries) || (entries[index].ID != id && entries[index].Legacy[id] == nil) {
 			return fmt.Errorf("schema_migrations contains unknown or non-contiguous migration %q", id)
 		}
 	}
@@ -267,14 +261,39 @@ func applyMigrationsLocked(db *gorm.DB, entries []migration, useMigrationTransac
 		}
 		for index, id := range applied {
 			validator := entries[index].Validate
-			if id == entries[index].LegacyID && entries[index].ValidateLegacy != nil {
-				validator = entries[index].ValidateLegacy
+			if legacyValidator := entries[index].Legacy[id]; legacyValidator != nil {
+				validator = legacyValidator
 			} else if entries[index].ValidateCurrent != nil {
 				validator = entries[index].ValidateCurrent
 			}
 			if err := inspection.validate(validator); err != nil {
 				return fmt.Errorf("validate applied migration %s: %w", id, err)
 			}
+		}
+	}
+
+	// Local databases already at 0030 or later lack upstream body recording.
+	// Complete its idempotent DDL while retaining their historical ledger IDs.
+	if len(applied) >= 30 && applied[29] == "0030_request_log_processing" && entries[29].ID == migrationfiles.ID0030 {
+		if !db.Migrator().HasTable("request_log_bodies") {
+			if err := migrationfiles.Up0030(db); err != nil {
+				return fmt.Errorf("complete request body recording for local migration ledger: %w", err)
+			}
+		}
+		if err := validateMigrationAfterDDL(db, migrationfiles.Validate0030); err != nil {
+			return fmt.Errorf("validate request body recording for local migration ledger: %w", err)
+		}
+	}
+
+	// Local 0031 entries predate upstream model price references.
+	if len(applied) >= 31 && entries[30].ID == migrationfiles.ID0031 && applied[30] != migrationfiles.ID0031 {
+		if err := migrationfiles.Validate0031(db); err != nil {
+			if err := migrationfiles.Up0031(db); err != nil {
+				return fmt.Errorf("complete model price references for local migration ledger: %w", err)
+			}
+		}
+		if err := validateMigrationAfterDDL(db, migrationfiles.Validate0031); err != nil {
+			return fmt.Errorf("validate model price references for local migration ledger: %w", err)
 		}
 	}
 
