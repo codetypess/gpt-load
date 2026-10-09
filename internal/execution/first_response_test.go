@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func TestFirstResponseIgnoresControlLinesAndSamplesMetadata(t *testing.T) {
-	for _, payload := range []string{`{"type":"response.created"}`, `{"type":"message_start"}`, `{"choices":[{"delta":{"role":"assistant"}}]}`, `{"candidates":[]}`, `{"usage":{}}`, `{"error":{}}`} {
+func TestFirstResponseSkipsLifecycleAndSamplesSemanticEvent(t *testing.T) {
+	for _, payload := range []string{`{"type":"response.created"}`, `{"type":"response.in_progress"}`, `{"type":"ping"}`, `{"type":"keepalive"}`} {
 		t.Run(payload, func(t *testing.T) {
 			calls := 0
 			ctx, stop := WithFirstResponseObserver(t.Context(), func() { calls++ })
@@ -24,7 +24,7 @@ func TestFirstResponseIgnoresControlLinesAndSamplesMetadata(t *testing.T) {
 				t.Fatal("incomplete line counted")
 			}
 			observe([]byte("\n"))
-			observe([]byte("data: more\n"))
+			observe([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"\"}\n"))
 			if calls != 1 {
 				t.Fatalf("calls = %d, want one", calls)
 			}
@@ -32,27 +32,55 @@ func TestFirstResponseIgnoresControlLinesAndSamplesMetadata(t *testing.T) {
 	}
 }
 
+func TestFirstResponseUsesSSEEventNameForLifecycleFiltering(t *testing.T) {
+	for _, stream := range []string{
+		"event: response.created\ndata: {\"opaque\":true}\n\n",
+		"event: response.in_progress\ndata: {\"opaque\":true}\n\n",
+		"event: ping\ndata: {\"opaque\":true}\n\n",
+		"event: message\ndata: {\"type\":\"response.created\"}\n\n",
+		"data: keepalive\n\n",
+	} {
+		t.Run(strings.ReplaceAll(stream, "\n", "_"), func(t *testing.T) {
+			calls := 0
+			ctx, stop := WithFirstResponseObserver(t.Context(), func() { calls++ })
+			defer stop()
+			NewFirstResponseSSEObserver(ctx)([]byte(stream))
+			if calls != 0 {
+				t.Fatalf("lifecycle event counted: %q", stream)
+			}
+		})
+	}
+
+	calls := 0
+	ctx, stop := WithFirstResponseObserver(t.Context(), func() { calls++ })
+	defer stop()
+	NewFirstResponseSSEObserver(ctx)([]byte("event: response.created\ndata: {}\n\nevent: response.output_text.delta\ndata: {}\n\n"))
+	if calls != 1 {
+		t.Fatalf("semantic event count = %d, want 1", calls)
+	}
+}
+
 func TestFirstResponseSamplesCRAndSplitCRLFLinesBeforeEOF(t *testing.T) {
 	const data = `data: {"type":"response.created"}`
 	for _, tc := range []struct {
-		name        string
-		chunks      []string
-		sampleAfter int
+		name   string
+		chunks []string
+		wantAt int
 	}{
 		{
-			name:        "cr_with_event",
-			chunks:      []string{"event: response.created\r", data, "\r", "\rdata: later\r\r"},
-			sampleAfter: 2,
+			name:   "cr_with_event",
+			chunks: []string{"event: response.created\r", data, "\r", "\rdata: later\r\r"},
+			wantAt: 3,
 		},
 		{
-			name:        "cr_data_only",
-			chunks:      []string{data, "\r", "\rdata: later\r\r"},
-			sampleAfter: 1,
+			name:   "cr_data_only",
+			chunks: []string{data, "\r", "\rdata: later\r\r"},
+			wantAt: 2,
 		},
 		{
-			name:        "split_crlf",
-			chunks:      []string{": ping\r", "\nevent: response.created\r", "\n" + data, "\r", "\n\r\ndata: later\r\n\r\n"},
-			sampleAfter: 3,
+			name:   "split_crlf",
+			chunks: []string{": ping\r", "\nevent: response.created\r", "\n" + data, "\r", "\n\r\ndata: later\r\n\r\n"},
+			wantAt: 4,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -63,7 +91,7 @@ func TestFirstResponseSamplesCRAndSplitCRLFLinesBeforeEOF(t *testing.T) {
 			for index, chunk := range tc.chunks {
 				observe([]byte(chunk))
 				want := 0
-				if index >= tc.sampleAfter {
+				if index >= tc.wantAt {
 					want = 1
 				}
 				if calls != want {
@@ -90,7 +118,7 @@ func TestFirstResponseStopsAtDoneMarker(t *testing.T) {
 func TestFirstResponseReaderPreservesBytesAndEOF(t *testing.T) {
 	calls := 0
 	ctx, stop := WithFirstResponseObserver(t.Context(), func() { calls++ })
-	body := "data: {\"type\":\"response.created\"}"
+	body := "data: {\"type\":\"response.created\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}"
 	data, err := io.ReadAll(ObserveFirstResponseReader(ctx, strings.NewReader(body)))
 	if err != nil || string(data) != body || calls != 1 {
 		t.Fatalf("body=%q calls=%d err=%v", data, calls, err)
