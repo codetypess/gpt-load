@@ -596,7 +596,7 @@ func buildUsageAggregationJournals(
 				journal.SpeedBucketStartMS = speedBucketStartMS
 				journal.SpeedRequestCount = 1
 				journal.SpeedOutputTokens = row.OutputTokens
-				journal.SpeedDurationMS = row.DurationMs
+				journal.SpeedDurationMS = usageModelSpeedDurationMS(row)
 			}
 			journals = append(journals, journal)
 		}

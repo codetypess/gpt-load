@@ -338,8 +338,8 @@ export default {
       speed: {
         title: '按模型的输出速度趋势',
         description:
-          'TPS 表示每秒输出 Token 数；每个时间桶按输出 Token 总量 ÷ 请求总耗时（秒）计算，等待、重试、凭据轮换与思考耗时均计入。',
-        accessibleDescription: '按时间桶与上游模型展示加权平均 TPS，缺少有效请求的时间桶留空。',
+          'TPS 表示每秒输出 Token 数；每个时间桶按输出 Token 总量 ÷ 首响后的生成耗时总和（秒）计算。首响前等待时间单独由首响指标体现；没有首响数据的请求回退到总耗时。',
+        accessibleDescription: '按时间桶与上游模型展示加权平均生成 TPS，缺少有效请求的时间桶留空。',
         meta: 'Top 5 · {granularity}',
         empty: '该范围内暂无可计算的输出速度。',
         requests: '{count} 个有效请求',

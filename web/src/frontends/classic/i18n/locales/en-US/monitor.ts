@@ -354,9 +354,9 @@ export default {
       speed: {
         title: 'Output speed by model',
         description:
-          'TPS means output tokens per second. Each time bucket divides total output tokens by total request duration, including waiting, retries, credential rotation, and reasoning time.',
+          'TPS means output tokens per second. Each time bucket divides total output tokens by the summed generation time after first response. The wait before first response is represented separately by first-response latency; requests without a first-response sample fall back to total duration.',
         accessibleDescription:
-          'Weighted average TPS by time bucket and upstream model. Buckets without measurable requests remain empty.',
+          'Weighted generation TPS by time bucket and upstream model. Buckets without measurable requests remain empty.',
         meta: 'Top 5 · {granularity}',
         empty: 'No measurable output speed in this range.',
         requests: '{count} measured requests',

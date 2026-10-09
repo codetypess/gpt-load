@@ -973,7 +973,6 @@ func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel co
 	}
 	onResponse := s.handler.responseBindingObserver(s.keyID, selection, ref, input.Request, recorder.autoSelection())
 	wsResult := binding.session.ExecuteTurn(ctx, input.Request.Body, func(ctx context.Context, body []byte) (eventErr error) {
-		recorder.recordFirstResponse()
 		defer func() {
 			if errors.Is(eventErr, ErrUpstreamProtocol) {
 				eventProtocolFailure = true
@@ -987,6 +986,9 @@ func (s *websocketConnection) runWebsocketAttempt(ctx context.Context, cancel co
 		}
 		if len(body) > s.handler.websocketLimits.message || json.Unmarshal(body, &event) != nil || observer.sawTerminal {
 			return ErrUpstreamProtocol
+		}
+		if execution.FirstResponseDataIsSemantic(event.Type, body) {
+			recorder.recordFirstResponse()
 		}
 		var eventLane string
 		if len(event.StreamID) > 0 && (json.Unmarshal(event.StreamID, &eventLane) != nil || !validWebsocketLane(eventLane)) {

@@ -88,6 +88,33 @@ func TestQueryUsageModelSpeedReturnsWeightedRatesByBucketAndModel(t *testing.T) 
 	}
 }
 
+func TestQueryUsageModelSpeedSubtractsFirstResponseForNewLogs(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	from := time.Date(2026, time.October, 9, 13, 0, 0, 0, time.UTC)
+	row := aggregationRow("speed-generation-window", from.Add(time.Minute), 7, "generation-model")
+	row.OutputTokens = 300
+	row.DurationMs = 4_000
+	firstResponseMS := int64(1_000)
+	row.FirstResponseMs = &firstResponseMS
+	if err := (&gormBatchWriter{db: db}).WriteBatch(t.Context(), []models.RequestLog{row}); err != nil {
+		t.Fatal(err)
+	}
+
+	series, err := queryUsageModelSpeed(db, UsageQuery{
+		FromMS: from.UnixMilli(), ToMS: from.Add(time.Hour).UnixMilli(),
+	}, UsageFiveMinuteBucketMS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series) != 1 || len(series[0].Points) != 1 {
+		t.Fatalf("generation speed series = %#v", series)
+	}
+	point := series[0].Points[0]
+	if point.OutputTokens != 300 || point.DurationMS != 3_000 {
+		t.Fatalf("generation speed point = %#v, want output=300 duration=3000", point)
+	}
+}
+
 func TestQueryUsageModelSpeedAppliesUsageFilters(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	from := time.Date(2026, time.October, 9, 13, 0, 0, 0, time.UTC)

@@ -60,7 +60,7 @@ func usageModelSpeedEligible(row models.RequestLog) bool {
 	if row.AttemptCount <= 0 || row.Operation == string(execution.OperationWebSearch) ||
 		row.UpstreamModel == "" || row.StatusCode < 200 || row.StatusCode >= 300 ||
 		(row.UsageState != "complete" && row.UsageState != "partial") ||
-		row.OutputTokens <= 0 || row.DurationMs <= 0 {
+		row.OutputTokens <= 0 || usageModelSpeedDurationMS(row) <= 0 {
 		return false
 	}
 	for _, candidate := range usageModelSpeedProtocols {
@@ -69,6 +69,22 @@ func usageModelSpeedEligible(row models.RequestLog) bool {
 		}
 	}
 	return false
+}
+
+// usageModelSpeedDurationMS is the time spent generating output after the
+// first response. Non-streaming requests have no first-response sample, so
+// their total request duration remains the best available denominator.
+func usageModelSpeedDurationMS(row models.RequestLog) int64 {
+	if row.DurationMs <= 0 {
+		return 0
+	}
+	if row.FirstResponseMs == nil {
+		return row.DurationMs
+	}
+	if *row.FirstResponseMs < 0 || *row.FirstResponseMs >= row.DurationMs {
+		return 0
+	}
+	return row.DurationMs - *row.FirstResponseMs
 }
 
 func applyUsageModelSpeedJournals(
@@ -343,7 +359,9 @@ func queryUsageModelSpeedRows(
 		if err := rawScope.
 			Select(`completed_at_ms - completed_at_ms % ? AS speed_bucket_ms,
 				upstream_model AS model, COUNT(*) AS request_count,
-				SUM(output_tokens) AS output_tokens, SUM(duration_ms) AS duration_ms`, bucketWidthMS).
+				SUM(output_tokens) AS output_tokens,
+				SUM(CASE WHEN first_response_ms IS NULL
+					THEN duration_ms ELSE duration_ms - first_response_ms END) AS duration_ms`, bucketWidthMS).
 			Group("speed_bucket_ms, upstream_model").
 			Scan(&rawRows).Error; err != nil {
 			return nil, fmt.Errorf("query usage model speed edge logs: %w", err)
@@ -396,5 +414,5 @@ func usageModelSpeedRawScope(db *gorm.DB, input UsageQuery) *gorm.DB {
 		Where("protocol IN ?", usageModelSpeedProtocols).
 		Where("usage_state IN ?", []string{"complete", "partial"}).
 		Where("output_tokens > 0").
-		Where("duration_ms > 0")
+		Where("duration_ms > COALESCE(first_response_ms, 0)")
 }

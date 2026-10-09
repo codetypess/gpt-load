@@ -2,11 +2,13 @@ type OutputTiming = {
   protocol: string
   status_code: number
   duration_ms: number
+  first_response_ms?: number | null
   output_tokens: string
   usage_state: string
 }
 
-// 两套前端共用请求平均输出速度，包含等待、重试、凭据轮换及思考耗时。
+// 两套前端共用请求输出速度。首响可用时只计算首响后的生成窗口；
+// 非流式请求没有首响采样，回退到总耗时。
 export function outputTokensPerSecond(row: OutputTiming): number | null {
   const tokens = Number(row.output_tokens)
   if (
@@ -19,7 +21,20 @@ export function outputTokensPerSecond(row: OutputTiming): number | null {
   ) {
     return null
   }
-  return Number.isSafeInteger(row.duration_ms) && row.duration_ms > 0
-    ? tokens / (row.duration_ms / 1000)
-    : null
+  if (!Number.isSafeInteger(row.duration_ms) || row.duration_ms <= 0) return null
+
+  const firstResponseMs = row.first_response_ms
+  if (firstResponseMs !== null && firstResponseMs !== undefined) {
+    if (
+      !Number.isSafeInteger(firstResponseMs) ||
+      firstResponseMs < 0 ||
+      firstResponseMs >= row.duration_ms
+    ) {
+      return null
+    }
+    const generationMs = row.duration_ms - firstResponseMs
+    return tokens / (generationMs / 1000)
+  }
+
+  return tokens / (row.duration_ms / 1000)
 }

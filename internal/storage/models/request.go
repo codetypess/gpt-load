@@ -177,7 +177,9 @@ type UsageStat struct {
 }
 
 // UsageModelSpeedStat is a five-minute TPS aggregate by access key, channel,
-// upstream group, credential, and upstream model.
+// upstream group, credential, and upstream model. New rows store the
+// output-generation window; legacy rows retain their original total-duration
+// denominator.
 type UsageModelSpeedStat struct {
 	ID            uint   `gorm:"primaryKey;autoIncrement"`
 	BucketStartMS int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_model_speed_stat_bucket,bucket_start_ms >= 0;uniqueIndex:idx_usage_model_speed_stats_identity,priority:1;index:idx_usage_model_speed_stats_bucket"`

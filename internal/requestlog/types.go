@@ -255,6 +255,8 @@ type UsageSeriesPoint struct {
 }
 
 // UsageModelSpeedPoint is one model's weighted output rate source for a time bucket.
+// New points use the output-generation window (total duration minus first
+// response when known); legacy points retain their original denominator.
 // Tokens per second is derived as OutputTokens / (DurationMS / 1000).
 type UsageModelSpeedPoint struct {
 	BucketStartMS int64
