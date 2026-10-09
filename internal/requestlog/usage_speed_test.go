@@ -88,6 +88,55 @@ func TestQueryUsageModelSpeedReturnsWeightedRatesByBucketAndModel(t *testing.T) 
 	}
 }
 
+func TestQueryUsageModelSpeedUsesTotalDurationRegardlessOfFirstResponse(t *testing.T) {
+	for _, firstResponse := range []struct {
+		name string
+		ms   *int64
+	}{
+		{name: "missing"},
+		{name: "zero", ms: new(int64(0))},
+		{name: "before_completion", ms: new(int64(1_000))},
+		{name: "at_completion", ms: new(int64(4_000))},
+		{name: "after_completion", ms: new(int64(5_000))},
+	} {
+		t.Run(firstResponse.name, func(t *testing.T) {
+			db := openRequestLogQueryDB(t)
+			from := time.Date(2026, time.October, 9, 13, 0, 0, 0, time.UTC)
+			row := aggregationRow("speed-total-duration", from.Add(time.Minute), 7, "total-duration-model")
+			row.OutputTokens = 300
+			row.DurationMs = 4_000
+			row.FirstResponseMs = firstResponse.ms
+			if err := (&gormBatchWriter{db: db}).WriteBatch(t.Context(), []models.RequestLog{row}); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, window := range []struct {
+				name     string
+				from, to time.Time
+			}{
+				{name: "aggregate", from: from, to: from.Add(time.Hour)},
+				{name: "raw_edge", from: from.Add(30 * time.Second), to: from.Add(2 * time.Minute)},
+			} {
+				t.Run(window.name, func(t *testing.T) {
+					series, err := queryUsageModelSpeed(db, UsageQuery{
+						FromMS: window.from.UnixMilli(), ToMS: window.to.UnixMilli(),
+					}, UsageFiveMinuteBucketMS)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(series) != 1 || len(series[0].Points) != 1 {
+						t.Fatalf("total-duration speed series = %#v", series)
+					}
+					point := series[0].Points[0]
+					if point.RequestCount != 1 || point.OutputTokens != 300 || point.DurationMS != 4_000 {
+						t.Fatalf("total-duration speed point = %#v, want requests=1 output=300 duration=4000 (75 TPS)", point)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestQueryUsageModelSpeedAppliesUsageFilters(t *testing.T) {
 	db := openRequestLogQueryDB(t)
 	from := time.Date(2026, time.October, 9, 13, 0, 0, 0, time.UTC)

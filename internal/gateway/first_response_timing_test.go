@@ -34,7 +34,7 @@ func TestFirstResponseSamplesDataLineBeforeFrameAndRestoration(t *testing.T) {
 		for i, data := range []string{
 			": ping\n\nevent: response.created\ndata: \n",
 			"data: {\"type\":\"response.created\",\"response\":{}}\n",
-			"\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n",
+			"\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n",
 		} {
 			phase = i + 1
 			if err := emit(execution.StreamEvent{Sequence: uint64(i + 2), Kind: execution.StreamEventData, Data: []byte(data)}); err != nil {
@@ -44,8 +44,8 @@ func TestFirstResponseSamplesDataLineBeforeFrameAndRestoration(t *testing.T) {
 		return execution.StreamResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK}
 	}}
 	NewExecutionForwarder(executor).ForwardStream(t.Context(), input, httptest.NewRecorder())
-	if observed != 2 {
-		t.Fatalf("first response phase = %d, want 2 before the SSE frame is complete", observed)
+	if observed != 3 {
+		t.Fatalf("first response phase = %d, want 3 before the SSE frame is complete", observed)
 	}
 }
 
@@ -69,7 +69,8 @@ func TestAutoModelFirstOutputRemainsIndependentOfLogFirstResponse(t *testing.T) 
 
 func TestWebsocketTimingExcludesConnectionIdle(t *testing.T) {
 	var clockMS atomic.Int64
-	ack := make(chan struct{})
+	createdAck := make(chan struct{})
+	semanticAck := make(chan struct{})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
 		if err != nil {
@@ -81,12 +82,23 @@ func TestWebsocketTimingExcludesConnectionIdle(t *testing.T) {
 				return
 			}
 			base := int64(turn) * 10_000
-			clockMS.Store(base + 50)
 			if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"id":"`+id+`","object":"response"}}`)); err != nil {
 				return
 			}
 			select {
-			case <-ack:
+			case <-createdAck:
+			case <-r.Context().Done():
+				return
+			case <-time.After(2 * time.Second):
+				t.Error("client did not acknowledge response.created")
+				return
+			}
+			clockMS.Store(base + 50)
+			if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.output_text.delta","response_id":"`+id+`","delta":"hello"}`)); err != nil {
+				return
+			}
+			select {
+			case <-semanticAck:
 			case <-r.Context().Done():
 				return
 			case <-time.After(2 * time.Second):
@@ -116,7 +128,11 @@ func TestWebsocketTimingExcludesConnectionIdle(t *testing.T) {
 		if _, _, err := conn.ReadMessage(); err != nil {
 			t.Fatal(err)
 		}
-		ack <- struct{}{}
+		createdAck <- struct{}{}
+		if _, _, err := conn.ReadMessage(); err != nil {
+			t.Fatal(err)
+		}
+		semanticAck <- struct{}{}
 		if _, _, err := conn.ReadMessage(); err != nil {
 			t.Fatal(err)
 		}

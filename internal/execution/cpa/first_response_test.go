@@ -45,7 +45,8 @@ func TestConvertedCodexSamplesMetadataBeforeCPAConversion(t *testing.T) {
 	go func() {
 		defer close(done)
 		defer writer.Close()
-		_, _ = io.WriteString(writer, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_timing\",\"object\":\"response\",\"model\":\"gpt-5.6-luna\"}}\n")
+		_, _ = io.WriteString(writer, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_timing\",\"object\":\"response\",\"model\":\"gpt-5.6-luna\"}}\n\n")
+		_, _ = io.WriteString(writer, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n")
 		select {
 		case <-observed:
 		case <-time.After(time.Second):
@@ -83,7 +84,7 @@ func TestCompressedObservationPreservesWireBytesAndErrors(t *testing.T) {
 				wire.WriteString("not compressed data")
 			}
 			if writer != nil {
-				if _, err := io.WriteString(writer, "data: {\"type\":\"response.created\"}\n\n"); err != nil {
+				if _, err := io.WriteString(writer, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"); err != nil {
 					t.Fatal(err)
 				}
 				if err := writer.Close(); err != nil {
