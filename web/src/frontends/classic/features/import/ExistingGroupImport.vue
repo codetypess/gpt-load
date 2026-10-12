@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import NexusTokenImport from '@shared/nexustoken/NexusTokenImport.vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -41,6 +42,7 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const toast = useToast()
+const nexusBusy = ref(false)
 const completed = ref(false)
 const errorKey = ref('')
 const credentialValidation = ref<CredentialValidationData | null>(null)
@@ -132,6 +134,7 @@ const canSubmit = computed(
   () =>
     !payloadLocked.value &&
     !pending.value &&
+    !nexusBusy.value &&
     selectedGroup.value !== null &&
     selectedChannel.value !== null &&
     credentialAnalysis.value.nonEmptyCount > 0 &&
@@ -377,7 +380,16 @@ onBeforeUnmount(() => {
       </template>
     </section>
 
+    <NexusTokenImport
+      v-if="selectedGroup?.channel_id === 'nexustoken'"
+      v-model="credentials"
+      :base-url="selectedGroup.params.base_url ?? ''"
+      :group-id="selectedGroup.id"
+      :disabled="payloadLocked || pending"
+      @busy="nexusBusy = $event"
+    />
     <CredentialTextarea
+      v-else
       v-model="credentials"
       :channel="selectedChannel"
       :disabled="payloadLocked"

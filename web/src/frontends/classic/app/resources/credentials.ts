@@ -230,6 +230,7 @@ const quotaWindowFields = [
   'limit',
   'remaining',
   'utilization',
+  'used_cost_usd',
   'reset_at_ms',
   'window_seconds',
   'model_ids',
@@ -320,17 +321,12 @@ function projectMask(value: unknown): string {
   return projectString(value)
 }
 
-function projectAccount(
-  value: unknown,
-  connectionType: 'api_key' | 'subscription',
-): CredentialItemDto['account'] {
+// API key channels may also expose independently authorized website account metadata.
+function projectAccount(value: unknown): CredentialItemDto['account'] {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, accountFields)
   const email = record.email === undefined ? undefined : projectString(record.email)
   const emailMask = record.email_mask === undefined ? undefined : projectString(record.email_mask)
-  if (connectionType === 'api_key' && (email !== undefined || emailMask !== undefined)) {
-    invalidResponse()
-  }
   return {
     ...(email === undefined ? {} : { email }),
     ...(emailMask === undefined ? {} : { email_mask: emailMask }),
@@ -381,6 +377,7 @@ function projectQuotaWindow(value: unknown): CredentialQuotaWindowDto {
   const limit = projectOptionalNumber(record, 'limit', { minimum: 0 })
   const remaining = projectOptionalNumber(record, 'remaining', { minimum: 0 })
   const utilization = projectOptionalNumber(record, 'utilization', { minimum: 0, maximum: 1 })
+  const usedCostUSD = projectOptionalNumber(record, 'used_cost_usd', { minimum: 0 })
   return {
     ...(record.source_id === undefined ? {} : { source_id: projectString(record.source_id) }),
     id,
@@ -394,6 +391,7 @@ function projectQuotaWindow(value: unknown): CredentialQuotaWindowDto {
     ...(limit === undefined ? {} : { limit }),
     ...(remaining === undefined ? {} : { remaining }),
     ...(utilization === undefined ? {} : { utilization }),
+    ...(usedCostUSD === undefined ? {} : { used_cost_usd: usedCostUSD }),
     ...(record.reset_at_ms === undefined
       ? {}
       : { reset_at_ms: projectEpochMilliseconds(record.reset_at_ms) }),
@@ -615,11 +613,11 @@ export function projectCredentialItem(value: unknown): CredentialItemDto {
     name: projectString(record.name ?? '', { allowEmpty: true }),
     label: credentialDisplayText(
       projectString(record.name ?? '', { allowEmpty: true }),
-      projectAccount(record.account, connectionType).email || projectMask(record.mask),
-      connectionType,
+      projectAccount(record.account).email || projectMask(record.mask),
+      projectAccount(record.account).email ? 'subscription' : connectionType,
     ),
     mask: projectMask(record.mask),
-    account: projectAccount(record.account, connectionType),
+    account: projectAccount(record.account),
     auth_state: projectEnum(record.auth_state, authStates),
     ...(record.auth_error_code === undefined
       ? {}

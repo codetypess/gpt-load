@@ -29,6 +29,7 @@ const (
 	NewAPI           ID = "newapi"
 	CLIProxyAPI      ID = "cliproxyapi"
 	Sub2API          ID = "sub2api"
+	NexusToken       ID = "nexustoken"
 	OpenAICompatible ID = "openai_compatible"
 	DeepSeek         ID = "deepseek"
 	MoonshotAI       ID = "moonshotai"
@@ -329,10 +330,12 @@ func NewResponsesCreateRoute(
 // CapabilityBindings names optional implementations without embedding runtime
 // objects in public manifests.
 type CapabilityBindings struct {
-	SubscriptionDriver SubscriptionDriverID
-	ModelDiscovery     UtilityID
-	QuotaObservation   UtilityID
-	ResetCreditAction  ActionID
+	// APIKeyQuotaObservation is independent of subscription authentication.
+	APIKeyQuotaObservation bool
+	SubscriptionDriver     SubscriptionDriverID
+	ModelDiscovery         UtilityID
+	QuotaObservation       UtilityID
+	ResetCreditAction      ActionID
 }
 
 // Definition is the complete, code-owned declaration for one channel. Every

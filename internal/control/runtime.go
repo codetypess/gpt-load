@@ -20,6 +20,7 @@ const (
 	defaultValidationInterval = 10 * time.Minute
 	maxValidationJitter       = 3 * time.Minute
 	retentionInterval         = time.Hour
+	nexusTokenSyncInterval    = 5 * time.Minute
 )
 
 type credentialMutationCoordinator interface {
@@ -32,6 +33,10 @@ type operationRecoveryRuntime interface {
 
 type catalogSyncRuntime interface {
 	Run(context.Context)
+}
+
+type nexusTokenObservationSync interface {
+	SyncNexusTokenObservations(context.Context)
 }
 
 // RequestLogCleaner is the control-owned scheduling view of request log
@@ -62,19 +67,20 @@ func (ticker standardRuntimeTicker) Stop() {
 }
 
 type Runtime struct {
-	registry           *state.CredentialRegistry
-	validator          validationSweep
-	requestLogCleaner  RequestLogCleaner
-	stageCleaner       credentialStageCleaner
-	operationRecovery  operationRecoveryRuntime
-	catalogSync        catalogSyncRuntime
-	cpaModelCatalog    catalogSyncRuntime
-	oauthCallback      *OAuthCallbackManager
-	manager            *state.Manager
-	validationInterval time.Duration
-	validationJitter   func() time.Duration
-	now                func() time.Time
-	newTicker          func(time.Duration) runtimeTicker
+	registry               *state.CredentialRegistry
+	validator              validationSweep
+	requestLogCleaner      RequestLogCleaner
+	stageCleaner           credentialStageCleaner
+	operationRecovery      operationRecoveryRuntime
+	catalogSync            catalogSyncRuntime
+	cpaModelCatalog        catalogSyncRuntime
+	nexusTokenObservations nexusTokenObservationSync
+	oauthCallback          *OAuthCallbackManager
+	manager                *state.Manager
+	validationInterval     time.Duration
+	validationJitter       func() time.Duration
+	now                    func() time.Time
+	newTicker              func(time.Duration) runtimeTicker
 }
 
 func NewRuntime(
@@ -109,6 +115,7 @@ func NewRuntime(
 	}
 	if operationRecovery != nil {
 		runtime.oauthCallback = operationRecovery.oauthCallback
+		runtime.nexusTokenObservations = operationRecovery
 	}
 	runtime.validator = newValidationWorker(
 		manager,
@@ -171,7 +178,30 @@ func (runtime *Runtime) Run(ctx context.Context) {
 			runtime.oauthCallback.Run(ctx)
 		}()
 	}
+	if runtime.nexusTokenObservations != nil {
+		ticker := runtime.newTicker(nexusTokenSyncInterval)
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			runtime.runNexusTokenObservationSync(ctx, ticker)
+		}()
+	}
 	wait.Wait()
+}
+
+func (runtime *Runtime) runNexusTokenObservationSync(ctx context.Context, ticker runtimeTicker) {
+	defer ticker.Stop()
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		runtime.nexusTokenObservations.SyncNexusTokenObservations(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C():
+		}
+	}
 }
 
 func (runtime *Runtime) runValidation(

@@ -24,6 +24,7 @@ export interface CredentialQuota {
   limit?: number
   remaining?: number
   utilization?: number
+  usedCostUSD?: number
   resetsAt?: number
   windowSeconds?: number
   models: string[]
@@ -58,7 +59,7 @@ export interface CredentialObservation {
     rateLimitTier: string
     extraUsage?: boolean
   }
-  resetCredits: number
+  resetCredits?: number
   creditExpirations: (number | undefined)[]
 }
 function amount(value: unknown): number | undefined {
@@ -121,7 +122,7 @@ export function readObservation(value: unknown): CredentialObservation | undefin
       : undefined,
     resetCredits:
       snapshot?.reset_credits_available === undefined
-        ? 0
+        ? undefined
         : integer(snapshot.reset_credits_available),
     creditExpirations:
       snapshot?.reset_credits === undefined
@@ -145,6 +146,7 @@ export function readObservation(value: unknown): CredentialObservation | undefin
             limit: amount(window.limit),
             remaining: amount(window.remaining),
             utilization: amount(window.utilization),
+            usedCostUSD: amount(window.used_cost_usd),
             resetsAt: optionalTime(window.reset_at_ms),
             windowSeconds: optionalTime(window.window_seconds),
             models: window.model_ids === undefined ? [] : list(window.model_ids).map(text),

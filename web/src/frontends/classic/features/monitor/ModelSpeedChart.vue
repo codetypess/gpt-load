@@ -377,6 +377,7 @@ function onKeydown(event: KeyboardEvent): void {
   position: absolute;
   z-index: 2;
   top: 16px;
+  width: max-content;
   min-width: 230px;
   transform: translateX(-50%);
   border: 1px solid var(--color-border-strong);
@@ -398,6 +399,7 @@ function onKeydown(event: KeyboardEvent): void {
   color: var(--color-text-faint);
   font-family: var(--font-mono);
   font-size: 11px;
+  white-space: nowrap;
 }
 .model-speed-chart__tooltip-row {
   display: grid;

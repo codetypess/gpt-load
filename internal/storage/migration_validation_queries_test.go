@@ -55,7 +55,7 @@ func verifyMigrationValidationQueryLimits(t *testing.T, db *gorm.DB) {
 		t.Fatalf("initialize schema: %v", err)
 	}
 	t.Logf("driver=%s phase=initialize total=%d current_database=%d information_schema=%d", db.Dialector.Name(), initialize.total, initialize.currentDatabase, initialize.informationSchema)
-	initialLimit := 1000
+	initialLimit := 1100 // Includes request body recording and local monitoring schemas.
 	if db.Dialector.Name() == "mysql" {
 		initialLimit = 1800
 	}

@@ -8,7 +8,8 @@ export function createModernQueryClient() {
       queries: {
         retry: false,
         staleTime: 0,
-        refetchInterval: false,
+        // NexusToken reads saved observations; the backend polls upstream every 5 minutes.
+        refetchInterval: (query) => (query.meta?.channelID === 'nexustoken' ? 30_000 : false),
         refetchIntervalInBackground: false,
         refetchOnWindowFocus: true,
         refetchOnReconnect: false,

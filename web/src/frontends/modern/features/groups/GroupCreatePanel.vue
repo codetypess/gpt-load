@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useMobileLayout } from '@modern/app/use-mobile-layout'
+import NexusTokenImport from '@shared/nexustoken/NexusTokenImport.vue'
 import { Eye, EyeOff, ChevronDown } from '@lucide/vue'
 import { useQuery } from '@tanstack/vue-query'
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from 'vue'
@@ -667,8 +668,17 @@ useMessageSource(() => (errorText.value ? { text: errorText.value, tone: 'danger
         </div>
         <template v-if="channel"
           ><div v-show="!isMobile || mobileStep === 'credentials'" class="modern-group-create-step">
+            <NexusTokenImport
+              v-if="channel.id === 'nexustoken'"
+              v-model="credentials"
+              :base-url="params.base_url ?? ''"
+              :proxy="proxyOverride"
+              :disabled="locked || discovering"
+              :entry-disabled="Boolean(proxyError) || Object.keys(paramErrors).length > 0"
+              @busy="stagingBusy = $event"
+            />
             <AppTextArea
-              v-if="!subscription"
+              v-else-if="!subscription"
               ref="credentialInput"
               v-model="credentials"
               :label="t('groupCreate.credentials')"
@@ -694,7 +704,7 @@ useMessageSource(() => (errorText.value ? { text: errorText.value, tone: 'danger
               {{ t('groupCreate.credentialCount', { count: n(count) }) }}
             </p>
             <SubscriptionCredentialStager
-              v-else
+              v-if="subscription"
               :key="channel.id"
               ref="stager"
               v-model="stages"

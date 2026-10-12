@@ -7,7 +7,12 @@ export interface CredentialAnalysis {
   tooManyCredentials: boolean
 }
 
-const structuredCredentialChannels = new Set(['azure_openai', 'aws_bedrock', 'google_vertex'])
+const structuredCredentialChannels = new Set([
+  'azure_openai',
+  'aws_bedrock',
+  'google_vertex',
+  'nexustoken',
+])
 
 export function analyzeCredentials(raw: string, channelID = ''): CredentialAnalysis {
   const normalizedRaw = raw.replace(/\r/g, '')
