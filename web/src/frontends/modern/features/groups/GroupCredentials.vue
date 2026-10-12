@@ -111,7 +111,7 @@ const filters = computed<CredentialFilters>(() => {
         ? query.proxy
         : '',
     reset:
-      props.group.connectionType === 'subscription' &&
+      (props.group.connectionType === 'subscription' || props.group.channelID === 'nexustoken') &&
       (query.reset === 'available' || query.reset === 'none' || query.reset === 'unknown')
         ? query.reset
         : '',
@@ -142,6 +142,7 @@ const credentialQuery = useQuery(
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       getCredentialDetail(client, props.group.id, credentialView.value.id, signal),
     enabled: credentialView.value.id > 0,
+    meta: { channelID: props.group.channelID },
   })),
 )
 const detail = computed({
@@ -209,6 +210,7 @@ const query = useQuery(
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       getGroupCredentials(client, props.group.id, filters.value, signal),
     placeholderData: keepPreviousData,
+    meta: { channelID: props.group.channelID },
   })),
 )
 const rows = computed(() => query.data.value?.items ?? [])
@@ -437,7 +439,12 @@ async function runAccountBatch(
   action: AccountBatchAction,
   targets = rows.value.filter((row) => selected.value.has(row.id)),
 ): Promise<void> {
-  if (busy.value || accountBatchPending.value || props.group.connectionType !== 'subscription')
+  if (
+    busy.value ||
+    accountBatchPending.value ||
+    (props.group.connectionType !== 'subscription' &&
+      !(action === 'sync' && props.group.channelID === 'nexustoken'))
+  )
     return
   if (action === 'sync') targets = targets.filter((row) => !syncPending(row.id))
   if (!targets.length) return
@@ -996,7 +1003,7 @@ defineExpose({ refresh })
         @compositionend="compositionEnd"
       />
       <AppSelect
-        v-if="group.connectionType === 'subscription'"
+        v-if="group.connectionType === 'subscription' || group.channelID === 'nexustoken'"
         class="modern-credentials-filter-control"
         :model-value="filters.reset"
         :label="t('groupDetail.filters.reset')"
@@ -1093,7 +1100,7 @@ defineExpose({ refresh })
                 @click="openBatchTest"
               />
               <AppIconButton
-                v-if="group.connectionType === 'subscription' && channel?.quotaObservation"
+                v-if="channel?.quotaObservation"
                 :icon="RefreshCw"
                 :label="t('groupWorkflows.syncSelected')"
                 size="sm"
@@ -1200,14 +1207,16 @@ defineExpose({ refresh })
         v-else
         class="modern-credential-cards"
         :class="{
-          'modern-credential-cards--subscriptions': group.connectionType === 'subscription',
+          'modern-credential-cards--subscriptions':
+            group.connectionType === 'subscription' || group.channelID === 'nexustoken',
         }"
       >
         <template v-for="row in rows" :key="row.id + ':' + cardRevision">
           <SubscriptionCredentialCard
-            v-if="group.connectionType === 'subscription'"
+            v-if="group.connectionType === 'subscription' || group.channelID === 'nexustoken'"
             :row="row"
             :channel="channel"
+            :hide-five-hour-quota="group.channelID === 'nexustoken'"
             :selected="selected.has(row.id)"
             :pending="mutating === row.id || syncPending(row.id)"
             :pending-action="

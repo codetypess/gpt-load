@@ -13,6 +13,7 @@
     "build": "pnpm run type-check && vite build",
     "lint": "eslint . --max-warnings=0 && pnpm run check:styles",
     "check:styles": "node scripts/check-modern-styles.mjs",
+    "check:channels": "node scripts/check-channel-contract.mjs",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "type-check": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json"

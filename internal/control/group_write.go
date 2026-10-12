@@ -52,8 +52,10 @@ func (model *GroupModel) UnmarshalJSON(data []byte) error {
 }
 
 type credentialCandidate struct {
-	canonical   json.RawMessage
-	fingerprint string
+	canonical             json.RawMessage
+	fingerprint           string
+	identityFingerprint   string
+	replaceWebsiteBinding bool
 }
 
 type normalizedCredentials struct {
@@ -264,13 +266,23 @@ func (s *Service) normalizeCredentials(
 		}
 		canonical := credential.CanonicalJSON()
 		fingerprint := s.encryption.Hash(string(canonical))
-		if _, duplicate := seen[fingerprint]; duplicate {
+		identity := fingerprint
+		replaceBinding := false
+		if channelID == channel.NexusToken {
+			apiKey, _ := credential.Value("api_key")
+			keyJSON, _ := json.Marshal(map[string]string{"api_key": apiKey})
+			identity = s.encryption.Hash(string(keyJSON))
+			sessionID, _ := credential.Value("session_id")
+			replaceBinding = sessionID != ""
+		}
+		if _, duplicate := seen[identity]; duplicate {
 			result.duplicateLines++
 			continue
 		}
-		seen[fingerprint] = struct{}{}
+		seen[identity] = struct{}{}
 		result.candidates = append(result.candidates, credentialCandidate{
 			canonical: append(json.RawMessage(nil), canonical...), fingerprint: fingerprint,
+			identityFingerprint: identity, replaceWebsiteBinding: replaceBinding,
 		})
 	}
 	if len(result.candidates) == 0 {
@@ -386,16 +398,16 @@ func (s *Service) persistCredentials(
 ) (int, int, error) {
 	fingerprints := make([]string, 0, len(normalized.candidates))
 	for _, candidate := range normalized.candidates {
-		fingerprints = append(fingerprints, candidate.fingerprint)
+		fingerprints = append(fingerprints, candidate.identityFingerprint)
 	}
 	var existingRows []models.Credential
-	if err := tx.Where("group_id = ? AND fingerprint IN ?", groupID, fingerprints).
+	if err := tx.Where("group_id = ? AND identity_fingerprint IN ?", groupID, fingerprints).
 		Find(&existingRows).Error; err != nil {
 		return 0, 0, app_errors.ParseDBError(err)
 	}
-	existingByFingerprint := make(map[string]struct{}, len(existingRows))
+	existingByFingerprint := make(map[string]models.Credential, len(existingRows))
 	for _, row := range existingRows {
-		existingByFingerprint[row.Fingerprint] = struct{}{}
+		existingByFingerprint[row.IdentityFingerprint] = row
 	}
 
 	nowMS, err := epochms.FromTime(s.now())
@@ -408,7 +420,24 @@ func (s *Service) persistCredentials(
 	added := 0
 	duplicated := normalized.duplicateLines
 	for _, candidate := range normalized.candidates {
-		if _, exists := existingByFingerprint[candidate.fingerprint]; exists {
+		if existing, exists := existingByFingerprint[candidate.identityFingerprint]; exists {
+			// Relinking the same inference key updates its website metadata while
+			// preserving status, name, proxy, identity and scheduling history.
+			if candidate.replaceWebsiteBinding && candidate.fingerprint != existing.Fingerprint {
+				encrypted, err := s.encryption.Encrypt(string(candidate.canonical))
+				if err != nil {
+					return 0, 0, app_errors.ErrInternalServer
+				}
+				if err := tx.Model(&existing).Updates(map[string]any{
+					"data": encrypted, "fingerprint": candidate.fingerprint,
+					"secret_version": existing.SecretVersion + 1, "updated_at_ms": nowMS,
+				}).Error; err != nil {
+					return 0, 0, app_errors.ParseDBError(err)
+				}
+				if err := tx.Where("credential_id = ?", existing.ID).Delete(&models.CredentialObservation{}).Error; err != nil {
+					return 0, 0, app_errors.ParseDBError(err)
+				}
+			}
 			duplicated++
 			continue
 		}
@@ -418,14 +447,14 @@ func (s *Service) persistCredentials(
 		}
 		row := models.Credential{
 			GroupID: groupID, Data: ciphertext, Fingerprint: candidate.fingerprint,
-			IdentityFingerprint: candidate.fingerprint, SecretVersion: 1,
+			IdentityFingerprint: candidate.identityFingerprint, SecretVersion: 1,
 			AuthState: models.CredentialAuthStateReady,
 			Status:    models.CredentialStatusActive, CreatedAtMS: nowMS, UpdatedAtMS: nowMS,
 		}
 		if err := tx.Create(&row).Error; err != nil {
 			return 0, 0, app_errors.ParseDBError(err)
 		}
-		existingByFingerprint[candidate.fingerprint] = struct{}{}
+		existingByFingerprint[candidate.identityFingerprint] = row
 		added++
 	}
 	return added, duplicated, nil

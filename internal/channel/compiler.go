@@ -618,7 +618,7 @@ func publicCapabilities(
 ) CapabilityDescriptor {
 	result := CapabilityDescriptor{
 		ModelDiscovery:    source.ModelDiscovery != "",
-		QuotaObservation:  source.QuotaObservation != "",
+		QuotaObservation:  source.QuotaObservation != "" || source.APIKeyQuotaObservation,
 		CredentialActions: []CredentialAction{},
 		OutboundProxy:     providerKind.SupportsOutboundProxy(),
 	}

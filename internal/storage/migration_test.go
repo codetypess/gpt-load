@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -44,6 +45,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0030,
 		migrationfiles.ID0031,
 		migrationfiles.ID0032,
+		migrationfiles.ID0033,
 	}
 	if len(migrations) != len(wantIDs) {
 		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
@@ -126,11 +128,17 @@ func TestLegacyRequestLogProcessing0024ResumeMarker(t *testing.T) {
 	}
 }
 
-func TestLegacyRequestLogProcessing0030UpgradesWithoutRenumbering(t *testing.T) {
-	for _, resume := range []bool{false, true} {
-		name := "completed"
+func TestLegacyRequestLogMigrationsUpgradeWithoutRenumbering(t *testing.T) {
+	for _, scenario := range []struct {
+		count  int
+		resume bool
+	}{
+		{30, false}, {30, true}, {31, false}, {31, true}, {32, false}, {32, true},
+	} {
+		resume := scenario.resume
+		name := fmt.Sprintf("%04d/completed", scenario.count)
 		if resume {
-			name = "resume_marker"
+			name = fmt.Sprintf("%04d/resume_marker", scenario.count)
 		}
 		t.Run(name, func(t *testing.T) {
 			db := openInternalMigrationTestDatabase(t)
@@ -139,13 +147,21 @@ func TestLegacyRequestLogProcessing0030UpgradesWithoutRenumbering(t *testing.T) 
 			legacy = append(legacy, migration{
 				ID: legacyID, Up: migrationfiles.Up0031,
 				Validate: migrationfiles.Validate0031, ValidateRecoverable: migrationfiles.ValidateRecoverable0031,
+			}, migration{
+				ID: "0031_usage_model_speed_stats", Up: migrationfiles.Up0032,
+				Validate: migrationfiles.Validate0032, ValidateRecoverable: migrationfiles.ValidateRecoverable0032,
+			}, migration{
+				ID: "0032_nexustoken_sessions", Up: migrationfiles.Up0033,
+				Validate: migrationfiles.Validate0033, ValidateRecoverable: migrationfiles.ValidateRecoverable0033,
 			})
+			legacy = legacy[:scenario.count]
 			if err := applyMigrationRegistry(db, legacy); err != nil {
-				t.Fatalf("apply local 0030: %v", err)
+				t.Fatalf("apply local migrations: %v", err)
 			}
 			if resume {
-				if err := db.Model(&schemaMigration{}).Where("id = ?", legacyID).
-					Update("id", migrationResumeMarker(legacyID)).Error; err != nil {
+				lastID := legacy[len(legacy)-1].ID
+				if err := db.Model(&schemaMigration{}).Where("id = ?", lastID).
+					Update("id", migrationResumeMarker(lastID)).Error; err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -158,7 +174,7 @@ func TestLegacyRequestLogProcessing0030UpgradesWithoutRenumbering(t *testing.T) 
 			}
 			for range 2 {
 				if err := AutoMigrate(db); err != nil {
-					t.Fatalf("upgrade local 0030: %v", err)
+					t.Fatalf("upgrade local migrations: %v", err)
 				}
 			}
 			if err := migrationfiles.Validate0030(db); err != nil {
@@ -168,11 +184,18 @@ func TestLegacyRequestLogProcessing0030UpgradesWithoutRenumbering(t *testing.T) 
 			if err := db.Table(migrationLedgerTable).Order("id").Pluck("id", &ids).Error; err != nil {
 				t.Fatal(err)
 			}
-			want0030 := legacyID
-			if resume {
-				want0030 = migrationfiles.ID0030
+			wantIDs := make([]string, len(migrations))
+			for index, entry := range migrations {
+				wantIDs[index] = entry.ID
 			}
-			if len(ids) != len(migrations) || ids[29] != want0030 || ids[30] != migrationfiles.ID0031 {
+			retainedCount := scenario.count
+			if resume {
+				retainedCount--
+			}
+			for index := 29; index < retainedCount; index++ {
+				wantIDs[index] = legacy[index].ID
+			}
+			if !reflect.DeepEqual(ids, wantIDs) {
 				t.Fatalf("upgraded migration ledger = %v", ids)
 			}
 			var row struct {

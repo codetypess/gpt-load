@@ -323,6 +323,7 @@ function projectChannel(value: unknown): ChannelDto {
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, channelFields)
   const paramFields = projectArray(record.param_fields, projectChannelField)
+  // Credentials may include account metadata; each field validates its own sensitivity.
   const credentialFields = projectArray(record.credential_fields, projectChannelField)
   const connection = projectConnection(record.connection)
   const capabilities = projectCapabilities(record.capabilities)
@@ -342,7 +343,6 @@ function projectChannel(value: unknown): ChannelDto {
     new Set(paramFields.map(({ key }) => key)).size !== paramFields.length ||
     new Set(credentialFields.map(({ key }) => key)).size !== credentialFields.length ||
     new Set(routeKeys).size !== routeKeys.length ||
-    credentialFields.some(({ sensitive }) => !sensitive) ||
     new Set(notices.map(({ id }) => id)).size !== notices.length ||
     (partner !== null && connection.type !== 'api_key') ||
     new Set(clientProtocols).size !== clientProtocols.length ||

@@ -50,6 +50,7 @@ func TestRegistryHasStableBuiltInOrderAndSearch(t *testing.T) {
 		NewAPI,
 		CLIProxyAPI,
 		Sub2API,
+		NexusToken,
 		OpenAICompatible,
 	}
 	if got := descriptorIDs(registry.List()); !reflect.DeepEqual(got, wantIDs) {
@@ -874,6 +875,7 @@ func TestEveryResponsesCreateChannelDeclaresStoreHandling(t *testing.T) {
 		NewAPI:           ResponsesStoreHandlingUpstreamManaged,
 		CLIProxyAPI:      ResponsesStoreHandlingUpstreamManaged,
 		Sub2API:          ResponsesStoreHandlingUpstreamManaged,
+		NexusToken:       ResponsesStoreHandlingUpstreamManaged,
 		OpenAICompatible: ResponsesStoreHandlingStateless,
 	}
 

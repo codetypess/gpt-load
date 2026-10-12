@@ -59,6 +59,8 @@ type QuotaWindow struct {
 	ModelIDs      []string `json:"model_ids,omitempty"`
 	State         string   `json:"state"`
 	IsPrimary     bool     `json:"is_primary,omitempty"`
+	// UsedCostUSD 保存上游返回的已用金额，与额度单位独立。
+	UsedCostUSD *float64 `json:"used_cost_usd,omitempty"`
 }
 
 type ResetCredit struct {

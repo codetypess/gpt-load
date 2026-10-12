@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { CredentialQuota } from '@modern/api/credential-observation'
+import { presentCarpoolQuota } from '@shared/nexustoken/quota-presentation'
 import { AppOverflowText, AppProgressBar } from '@modern/components/ui'
 import { useClock } from '@modern/components/ui/clock'
 import { formatRemainingDuration } from '@modern/components/ui/format'
@@ -18,14 +19,33 @@ const { t, te, n, locale } = useI18n()
 const now = useClock()
 const rows = computed(() => sortedQuotaWindows(props.windows))
 function label(window: CredentialQuota): string {
+  if (window.scope === 'personal' || window.scope === 'vehicle') {
+    const subject = locale.value.startsWith('zh')
+      ? window.scope === 'personal'
+        ? '个人'
+        : '整车'
+      : locale.value.startsWith('ja')
+        ? window.scope === 'personal'
+          ? '個人'
+          : '共有枠'
+        : window.scope === 'personal'
+          ? 'Personal'
+          : 'Vehicle'
+    return `${subject} · ${window.windowSeconds === 18000 ? '5h' : '7d'}`
+  }
   const key = 'credentialCards.quotaLabels.' + window.labelKey
   return quotaWindowTitle(window, window.labelKey && te(key) ? t(key) : window.label)
 }
 function value(window: CredentialQuota): string {
+  const carpool = presentCarpoolQuota(window, locale.value)
+  if (carpool) return carpool.label
   const percent = quotaRemaining(window)
   if (percent !== undefined) return n(Math.round(percent)) + '%'
   if (window.remaining !== undefined) return n(window.remaining)
   return '—'
+}
+function progress(window: CredentialQuota): number | undefined {
+  return presentCarpoolQuota(window, locale.value)?.progress ?? quotaRemaining(window)
 }
 function period(window: CredentialQuota): string {
   const range = quotaWindowRange(window)
@@ -53,7 +73,7 @@ function countdown(window: CredentialQuota): string {
       </div>
       <AppProgressBar
         :label="[label(window), value(window)].filter(Boolean).join(' · ')"
-        :value="quotaRemaining(window)"
+        :value="progress(window)"
         :tone="quotaTone(window)"
         size="sm"
       />

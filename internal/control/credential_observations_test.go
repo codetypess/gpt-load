@@ -91,6 +91,37 @@ func TestMapCredentialObservationKeepsSafeAccountSummary(t *testing.T) {
 	}
 }
 
+func TestMapCredentialObservationRepairsLegacyMultiplePrimaryWindows(t *testing.T) {
+	t.Parallel()
+	row := models.CredentialObservation{
+		CredentialID: 4, ObservationVersion: 4, State: models.CredentialObservationFresh,
+		SnapshotJSON: models.JSON(`{
+			"plan_summary":{"name":"ChatGPT Pro 200"},
+			"quota_windows":[
+				{"id":"personal-5h","scope":"personal","window_seconds":18000},
+				{"id":"vehicle-5h","scope":"vehicle","window_seconds":18000},
+				{"id":"personal-7d","scope":"personal","window_seconds":604800,"used":7,"remaining":93,"is_primary":true},
+				{"id":"vehicle-7d","scope":"vehicle","window_seconds":604800,"used":7,"remaining":93,"is_primary":true}
+			],
+			"credits":{"balance":"0","has_credits":false,"unlimited":false},
+			"reset_credits_available":0
+		}`),
+	}
+	before := string(row.SnapshotJSON)
+	result := mapCredentialObservation(row)
+	if result.Snapshot == nil || len(result.Snapshot.QuotaWindows) != 4 || result.ObservationVersion != 4 || result.State != "fresh" {
+		t.Fatalf("legacy observation = %#v", result)
+	}
+	for _, window := range result.Snapshot.QuotaWindows {
+		if window.IsPrimary != (window.ID == "personal-7d") {
+			t.Fatalf("multiple primary windows remain: %#v", result.Snapshot.QuotaWindows)
+		}
+	}
+	if result.Snapshot.Credits.Balance != "0" || result.Snapshot.ResetCreditsAvailable == nil || *result.Snapshot.ResetCreditsAvailable != 0 || string(row.SnapshotJSON) != before {
+		t.Fatal("legacy normalization changed balances, reset cards, or stored snapshot")
+	}
+}
+
 func TestNormalizeCodexResetCreditDetailsKeepsOnlyAvailableCodexCredits(t *testing.T) {
 	t.Parallel()
 

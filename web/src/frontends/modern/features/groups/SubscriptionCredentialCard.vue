@@ -26,6 +26,7 @@ import { credentialStatus, credentialTime } from './credential-presentation'
 const props = defineProps<{
   row: CredentialRow
   channel?: GroupChannel
+  hideFiveHourQuota?: boolean
   selected: boolean
   disabled: boolean
   pending?: boolean
@@ -43,12 +44,22 @@ defineEmits<{
 const { t, n, locale } = useI18n()
 const state = computed(() => credentialStatus(props.row))
 const observation = computed(() => props.row.observation)
+const visibleQuotaWindows = computed(() =>
+  (observation.value?.windows ?? []).filter(
+    (window) => !props.hideFiveHourQuota || window.windowSeconds !== 18000,
+  ),
+)
 const plan = computed(() => observation.value?.plan.trim() ?? '')
 const creditBalanceLabel = computed(() => {
   const credits = observation.value?.credits
   if (credits?.unlimited) return t('credentialCards.creditUnlimited')
   const balance = Number(credits?.balance)
-  return Number.isFinite(balance) && balance > 0 ? n(balance, { maximumFractionDigits: 20 }) : ''
+  return credits?.balance !== undefined &&
+    credits.balance !== '' &&
+    Number.isFinite(balance) &&
+    balance >= 0
+    ? n(balance, { maximumFractionDigits: 20 })
+    : ''
 })
 const creditLabel = computed(() => {
   const expirations = observation.value?.creditExpirations ?? []
@@ -60,6 +71,12 @@ const creditLabel = computed(() => {
     }),
   )
   return [t('credentialCards.resetCredits', { count: n(available) }), ...details].join('\n')
+})
+const nearestExpiry = computed(() => {
+  const times = (observation.value?.creditExpirations ?? []).filter(
+    (time): time is number => typeof time === 'number' && time > Date.now(),
+  )
+  return times.length ? credentialTime(Math.min(...times), locale.value) : ''
 })
 const syncLabel = computed(() =>
   props.syncSucceeded
@@ -152,10 +169,10 @@ useLoadingActivity(() => Boolean(props.pending))
     </header>
     <div class="modern-subscription-card-body">
       <div
-        v-if="channel?.quotaObservation || observation?.windows.length"
+        v-if="channel?.quotaObservation || visibleQuotaWindows.length"
         class="modern-subscription-card-quota"
       >
-        <CredentialQuotaRows v-if="observation?.windows.length" :windows="observation.windows" />
+        <CredentialQuotaRows v-if="visibleQuotaWindows.length" :windows="visibleQuotaWindows" />
         <div v-else class="modern-subscription-card-empty">
           <span>{{ t('credentialCards.noQuota') }}</span>
           <div class="modern-subscription-card-empty-row">
@@ -178,10 +195,17 @@ useLoadingActivity(() => Boolean(props.pending))
           </div>
         </div>
       </div>
+      <AppTooltip v-if="observation?.resetCredits !== undefined" :label="creditLabel">
+        <span class="modern-subscription-card-credit-summary" tabindex="0">
+          <span aria-hidden="true">{{ '●'.repeat(Math.min(5, observation.resetCredits)) }}</span>
+          {{ t('credentialCards.resetCredits', { count: n(observation.resetCredits) }) }}
+          <span v-if="nearestExpiry">{{ nearestExpiry }}</span>
+        </span>
+      </AppTooltip>
       <div
         v-if="
           error ||
-          (observation?.windows.length && observation.state !== 'fresh') ||
+          (visibleQuotaWindows.length && observation?.state !== 'fresh') ||
           row.modelCooldowns.length ||
           row.cooldownUntil ||
           row.failuresInRow
@@ -189,9 +213,10 @@ useLoadingActivity(() => Boolean(props.pending))
         class="modern-subscription-card-notices"
       >
         <span v-if="error" class="modern-subscription-card-error" role="alert">{{ error }}</span>
-        <span v-else-if="observation?.windows.length && observation.state !== 'fresh'">{{
-          t('credentialCards.observation.' + observation.state)
-        }}</span>
+        <span
+          v-else-if="visibleQuotaWindows.length && observation && observation.state !== 'fresh'"
+          >{{ t('credentialCards.observation.' + observation.state) }}</span
+        >
         <span v-if="row.cooldownUntil">{{
           t('groupDetail.recoversAt', { time: credentialTime(row.cooldownUntil, locale) })
         }}</span>
@@ -232,7 +257,7 @@ useLoadingActivity(() => Boolean(props.pending))
         </AppTooltip>
         <CredentialCardActions
           :row="row"
-          subscription
+          :subscription="channel?.connectionType === 'subscription'"
           :disabled="disabled"
           @action="$emit('action', $event)"
         />
@@ -249,6 +274,17 @@ useLoadingActivity(() => Boolean(props.pending))
 </template>
 
 <style scoped>
+.modern-subscription-card-credit-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--modern-space-2);
+  color: var(--modern-muted);
+  font-size: var(--modern-font-size-small);
+}
+.modern-subscription-card-credit-summary > :first-child {
+  color: var(--modern-accent);
+}
 .modern-subscription-card-credit-balance {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;

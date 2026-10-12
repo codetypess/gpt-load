@@ -37,6 +37,7 @@ const (
 	NewAPI           = spec.NewAPI
 	CLIProxyAPI      = spec.CLIProxyAPI
 	Sub2API          = spec.Sub2API
+	NexusToken       = spec.NexusToken
 	OpenAICompatible = spec.OpenAICompatible
 	DeepSeek         = spec.DeepSeek
 	MoonshotAI       = spec.MoonshotAI

@@ -503,7 +503,7 @@ func (s *Service) mapCredentialItem(
 		return CredentialItemResponse{}, err
 	}
 	item.Proxy = proxyViews[row.ID]
-	if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
+	if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription || group.ChannelID == string(channel.NexusToken) {
 		var observation models.CredentialObservation
 		result := s.db.WithContext(ctx).Take(&observation, "credential_id = ?", row.ID)
 		if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {

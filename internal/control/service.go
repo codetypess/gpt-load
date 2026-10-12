@@ -94,6 +94,7 @@ type Service struct {
 	observationMu         sync.Mutex
 	observationFlights    map[observationFlightKey]*observationFlight
 	observationSemaphore  chan struct{}
+	nexusTokenMu          sync.Mutex
 }
 
 type credentialRuntimeRetirer interface {

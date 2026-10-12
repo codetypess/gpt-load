@@ -203,6 +203,7 @@ export interface CredentialQuotaWindowDto {
   limit?: number
   remaining?: number
   utilization?: number
+  used_cost_usd?: number
   reset_at_ms?: number
   window_seconds?: number
   model_ids?: string[]

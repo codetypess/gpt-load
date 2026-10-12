@@ -218,22 +218,28 @@ func TestOpenAIModelDiscoveryParsesCodexCatalog(t *testing.T) {
 	}
 }
 
-func TestCodexGatewayModelDiscoveryIncludesClientVersion(t *testing.T) {
+func TestCodexGatewayModelDiscoveryMergesStandardAndCodexCatalogs(t *testing.T) {
 	t.Parallel()
 
-	for _, channelID := range []channel.ID{channel.Sub2API, channel.CLIProxyAPI, channel.GPTLoad} {
+	for _, channelID := range []channel.ID{channel.Sub2API, channel.NexusToken, channel.CLIProxyAPI, channel.GPTLoad} {
 		t.Run(string(channelID), func(t *testing.T) {
 			t.Parallel()
-			var observed execution.AttemptSpec
+			var observed []execution.AttemptSpec
 			executor := scriptedDiscoveryExecutor{execute: func(
 				_ context.Context,
 				spec execution.AttemptSpec,
 			) execution.AttemptResult {
-				observed = spec.Clone()
+				observed = append(observed, spec.Clone())
+				body := `{"object":"list","data":[
+					{"id":"gpt-image-1"},{"id":"gpt-image-1.5"},{"id":"gpt-image-2"},{"id":"gpt-6-sol"}
+				]}`
+				if spec.RawQuery != "" {
+					body = `{"models":[{"slug":"gpt-6.1-sol"},{"slug":"gpt-6-sol"}]}`
+				}
 				return execution.AttemptResult{
 					DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
 					StatusCode: http.StatusOK, Header: http.Header{},
-					Body: []byte(`{"models":[{"slug":"gpt-6.1-sol"}]}`),
+					Body: []byte(body),
 				}
 			}}
 			service := &Service{executor: executor, modelDiscoveryTimeout: time.Second}
@@ -245,12 +251,72 @@ func TestCodexGatewayModelDiscoveryIncludesClientVersion(t *testing.T) {
 			if err != nil {
 				t.Fatalf("executeModelDiscovery() error = %v", err)
 			}
-			query, err := url.ParseQuery(observed.RawQuery)
-			if err != nil || query.Get("client_version") != catalog.CodexModelCatalogVersion || len(query) != 1 {
-				t.Fatalf("discovery query = %q, err=%v", observed.RawQuery, err)
+			if len(observed) != 2 || observed[0].RawQuery != "" {
+				t.Fatalf("discovery attempts = %#v", observed)
 			}
-			if got := result.Models; len(got) != 1 || got[0].ID != "gpt-6.1-sol" {
-				t.Fatalf("models = %#v", got)
+			query, err := url.ParseQuery(observed[1].RawQuery)
+			if err != nil || query.Get("client_version") != catalog.CodexModelCatalogVersion || len(query) != 1 {
+				t.Fatalf("Codex discovery query = %q, err=%v", observed[1].RawQuery, err)
+			}
+			got := make([]string, 0, len(result.Models))
+			for _, model := range result.Models {
+				got = append(got, model.ID)
+			}
+			want := []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2", "gpt-6-sol", "gpt-6.1-sol"}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("models = %#v, want %#v", got, want)
+			}
+		})
+	}
+}
+
+func TestCodexGatewayModelDiscoveryKeepsSuccessfulCatalog(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name        string
+		failedQuery string
+		want        string
+	}{
+		{name: "standard unavailable", failedQuery: "", want: "gpt-6.1-sol"},
+		{name: "Codex unavailable", failedQuery: "client_version", want: "gpt-image-2"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			executor := scriptedDiscoveryExecutor{execute: func(
+				_ context.Context,
+				spec execution.AttemptSpec,
+			) execution.AttemptResult {
+				failed := spec.RawQuery == ""
+				if test.failedQuery != "" {
+					failed = spec.RawQuery != ""
+				}
+				if failed {
+					return execution.AttemptResult{
+						DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+						StatusCode: http.StatusBadGateway, Header: http.Header{},
+					}
+				}
+				body := `{"object":"list","data":[{"id":"gpt-image-2"}]}`
+				if spec.RawQuery != "" {
+					body = `{"models":[{"slug":"gpt-6.1-sol"}]}`
+				}
+				return execution.AttemptResult{
+					DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+					StatusCode: http.StatusOK, Header: http.Header{}, Body: []byte(body),
+				}
+			}}
+			service := &Service{executor: executor, modelDiscoveryTimeout: time.Second}
+			target := discoveryTargetForTest(
+				t, channel.Sub2API, "https://gateway.example", []string{"secret-key"}, state.HeaderRules{},
+			)
+
+			result, err := service.executeModelDiscovery(context.Background(), target)
+			if err != nil {
+				t.Fatalf("executeModelDiscovery() error = %v", err)
+			}
+			if len(result.Models) != 1 || result.Models[0].ID != test.want {
+				t.Fatalf("models = %#v, want %q", result.Models, test.want)
 			}
 		})
 	}

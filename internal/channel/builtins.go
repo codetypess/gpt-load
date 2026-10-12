@@ -44,6 +44,7 @@ func builtInModules() []spec.Module {
 		modules.NewAPI(),
 		modules.CLIProxyAPI(),
 		modules.Sub2API(),
+		modules.NexusToken(),
 		modules.OpenAICompatible(),
 	}
 }

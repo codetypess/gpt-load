@@ -184,6 +184,15 @@ func (s *Service) credentialPresentation(
 	canonical json.RawMessage,
 	identity string,
 ) (string, CredentialAccountResponse, error) {
+	if group.ChannelID == string(channel.NexusToken) {
+		var fields map[string]string
+		if json.Unmarshal(canonical, &fields) != nil {
+			return "", CredentialAccountResponse{}, app_errors.ErrInternalServer
+		}
+		if fields["email"] != "" {
+			return maskEmail(fields["email"]), CredentialAccountResponse{Email: fields["email"], EmailMask: maskEmail(fields["email"]), PlanType: fields["plan_name"]}, nil
+		}
+	}
 	if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
 		driver, driverErr := s.subscriptionDriver(channel.ID(group.ChannelID))
 		if driverErr != nil {
@@ -286,7 +295,7 @@ func (s *Service) captureCredentials(ctx context.Context, groupID uint) (credent
 	}
 	observations := make([]models.CredentialObservation, 0)
 	var observationsErr error
-	if groupErr == nil && rowsErr == nil && len(rows) > 0 && normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
+	if groupErr == nil && rowsErr == nil && len(rows) > 0 && (normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription || group.ChannelID == string(channel.NexusToken)) {
 		observationsErr = s.db.WithContext(ctx).
 			Where("credential_id IN (?)", credentialIDs(rows)).Find(&observations).Error
 	}
@@ -444,7 +453,7 @@ func (s *Service) mapCredentialCollection(
 		item.AuthErrorCode = safeInternalErrorCode(row.AuthErrorCode)
 		item.Account = account
 		item.Proxy = proxyViews[row.ID]
-		if item.ConnectionType == string(models.ConnectionTypeSubscription) {
+		if item.ConnectionType == string(models.ConnectionTypeSubscription) || observation.group.ChannelID == string(channel.NexusToken) {
 			item.Observation = presentCredentialObservation(observation.subscription[row.ID], row.IdentityFingerprint)
 			item.Observation = withCredentialPlan(item.Observation, account.PlanType)
 		}
