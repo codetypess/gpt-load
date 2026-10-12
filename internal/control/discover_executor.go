@@ -77,7 +77,7 @@ func (s *Service) executeModelDiscovery(
 	var sequence uint32
 	for _, credential := range target.credentials {
 		models := make([]string, 0)
-		rawQuery := modelDiscoveryInitialQuery(clientProtocol)
+		rawQuery := modelDiscoveryInitialQuery(target.channelID, clientProtocol)
 		seenCursors := make(map[string]struct{})
 		for pageNumber := 0; pageNumber < maxModelDiscoveryPages; pageNumber++ {
 			attemptID, identityErr := s.newExecutionID()
@@ -204,6 +204,11 @@ func parseDiscoveredModelsPage(
 			Data    []struct {
 				ID string `json:"id"`
 			} `json:"data"`
+			Models []struct {
+				Slug  string `json:"slug"`
+				ID    string `json:"id"`
+				Model string `json:"model"`
+			} `json:"models"`
 		}
 		if err := decodeSingleJSON(body, &payload); err != nil {
 			return discoveredModelsPage{}, err
@@ -211,9 +216,21 @@ func parseDiscoveredModelsPage(
 		if payload.Success != nil && !*payload.Success {
 			return discoveredModelsPage{}, fmt.Errorf("upstream model discovery reported failure")
 		}
-		models := make([]string, 0, len(payload.Data))
+		models := make([]string, 0, len(payload.Data)+len(payload.Models))
 		for _, item := range payload.Data {
 			models = append(models, item.ID)
+		}
+		for _, item := range payload.Models {
+			id := strings.TrimSpace(item.Slug)
+			if id == "" {
+				id = strings.TrimSpace(item.ID)
+			}
+			if id == "" {
+				id = strings.TrimSpace(item.Model)
+			}
+			if id != "" {
+				models = append(models, id)
+			}
 		}
 		return discoveredModelsPage{models: models}, nil
 	case protocol.Anthropic:
@@ -284,15 +301,28 @@ func parseDiscoveredModelsPage(
 	}
 }
 
-func modelDiscoveryInitialQuery(clientProtocol protocol.Protocol) string {
+func modelDiscoveryInitialQuery(channelID channel.ID, clientProtocol protocol.Protocol) string {
 	values := make(url.Values, 1)
 	switch clientProtocol {
+	case protocol.OpenAICompletions:
+		if usesCodexModelCatalog(channelID) {
+			values.Set("client_version", catalog.CodexModelCatalogVersion)
+		}
 	case protocol.Anthropic:
 		values.Set("limit", strconv.Itoa(modelDiscoveryPageSize))
 	case protocol.Gemini:
 		values.Set("pageSize", strconv.Itoa(modelDiscoveryPageSize))
 	}
 	return values.Encode()
+}
+
+func usesCodexModelCatalog(channelID channel.ID) bool {
+	switch channelID {
+	case channel.Sub2API, channel.CLIProxyAPI, channel.GPTLoad:
+		return true
+	default:
+		return false
+	}
 }
 
 func nextModelDiscoveryQuery(
@@ -308,7 +338,7 @@ func nextModelDiscoveryQuery(
 	if cursor == "" {
 		return "", fmt.Errorf("model list pagination cursor is missing")
 	}
-	values, err := url.ParseQuery(modelDiscoveryInitialQuery(clientProtocol))
+	values, err := url.ParseQuery(modelDiscoveryInitialQuery("", clientProtocol))
 	if err != nil {
 		return "", fmt.Errorf("build model list pagination query")
 	}

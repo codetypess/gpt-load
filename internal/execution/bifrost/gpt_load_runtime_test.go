@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"gpt-load/internal/catalog"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	"gpt-load/internal/protocol"
@@ -50,6 +51,13 @@ func TestGPTLoadNativeModelListsUseGatewayRoot(t *testing.T) {
 				if request.Method != http.MethodGet || request.URL.Path != "/gateway"+test.path {
 					t.Errorf("upstream target = %s %s", request.Method, request.URL.Path)
 				}
+				wantClientVersion := ""
+				if test.clientProtocol == protocol.OpenAICompletions {
+					wantClientVersion = catalog.CodexModelCatalogVersion
+				}
+				if got := request.URL.Query().Get("client_version"); got != wantClientVersion {
+					t.Errorf("client_version = %q, want %q", got, wantClientVersion)
+				}
 				wantCredential := testAPIKey
 				if test.credentialHeader == "Authorization" {
 					wantCredential = "Bearer " + testAPIKey
@@ -67,6 +75,9 @@ func TestGPTLoadNativeModelListsUseGatewayRoot(t *testing.T) {
 
 			manager, resolved := newGPTLoadManagerForTest(t, server.URL+"/gateway")
 			spec := utilitySpec(channel.GPTLoad, test.clientProtocol, execution.OperationListModels, http.MethodGet, test.path, nil)
+			if test.clientProtocol == protocol.OpenAICompletions {
+				spec.Query.Set("client_version", catalog.CodexModelCatalogVersion)
+			}
 			spec.TargetConfig = resolved.TargetConfig
 			spec = freezeTestAttempt(spec)
 			result := manager.Execute(context.Background(), spec)
