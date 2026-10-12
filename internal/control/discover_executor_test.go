@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"gpt-load/internal/catalog"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/execution"
 	app_errors "gpt-load/internal/platform/errors"
@@ -197,6 +198,64 @@ func TestOpenAIModelDiscoveryRejectsExplicitNewAPIFailureEnvelope(t *testing.T) 
 	}
 }
 
+func TestOpenAIModelDiscoveryParsesCodexCatalog(t *testing.T) {
+	t.Parallel()
+
+	page, err := parseDiscoveredModelsPage(protocol.OpenAICompletions, []byte(`{
+		"models":[
+			{"slug":"gpt-6.1-sol","id":"ignored-id","model":"ignored-model"},
+			{"id":"gpt-6-astra"},
+			{"model":"gpt-6-sol"},
+			{"slug":""}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("parseDiscoveredModelsPage() error = %v", err)
+	}
+	want := []string{"gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol"}
+	if !reflect.DeepEqual(page.models, want) || page.nextRawQuery != "" {
+		t.Fatalf("page = %#v, want models %#v", page, want)
+	}
+}
+
+func TestCodexGatewayModelDiscoveryIncludesClientVersion(t *testing.T) {
+	t.Parallel()
+
+	for _, channelID := range []channel.ID{channel.Sub2API, channel.CLIProxyAPI, channel.GPTLoad} {
+		t.Run(string(channelID), func(t *testing.T) {
+			t.Parallel()
+			var observed execution.AttemptSpec
+			executor := scriptedDiscoveryExecutor{execute: func(
+				_ context.Context,
+				spec execution.AttemptSpec,
+			) execution.AttemptResult {
+				observed = spec.Clone()
+				return execution.AttemptResult{
+					DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+					StatusCode: http.StatusOK, Header: http.Header{},
+					Body: []byte(`{"models":[{"slug":"gpt-6.1-sol"}]}`),
+				}
+			}}
+			service := &Service{executor: executor, modelDiscoveryTimeout: time.Second}
+			target := discoveryTargetForTest(
+				t, channelID, "https://gateway.example", []string{"secret-key"}, state.HeaderRules{},
+			)
+
+			result, err := service.executeModelDiscovery(context.Background(), target)
+			if err != nil {
+				t.Fatalf("executeModelDiscovery() error = %v", err)
+			}
+			query, err := url.ParseQuery(observed.RawQuery)
+			if err != nil || query.Get("client_version") != catalog.CodexModelCatalogVersion || len(query) != 1 {
+				t.Fatalf("discovery query = %q, err=%v", observed.RawQuery, err)
+			}
+			if got := result.Models; len(got) != 1 || got[0].ID != "gpt-6.1-sol" {
+				t.Fatalf("models = %#v", got)
+			}
+		})
+	}
+}
+
 func discoveryTargetForTest(
 	t *testing.T,
 	channelID channel.ID,
@@ -260,7 +319,8 @@ func TestExecuteModelDiscoveryUsesNeutralExecutor(t *testing.T) {
 	}
 	if observed.Operation != execution.OperationListModels ||
 		observed.ChannelID != string(channel.OpenAICompatible) ||
-		observed.Credential.ID == 0 || string(observed.TargetConfig) != `{"base_url":"https://api.example.com/v1"}` {
+		observed.Credential.ID == 0 || observed.RawQuery != "" ||
+		string(observed.TargetConfig) != `{"base_url":"https://api.example.com/v1"}` {
 		t.Fatalf("observed spec = %#v", observed)
 	}
 	if got := result.Models; len(got) != 1 || got[0].ID != "gpt-test" {
