@@ -39,6 +39,7 @@ import StatusBadge from '@/components/ui/StatusBadge.vue'
 import ModelCooldownDetails from '@/components/ui/ModelCooldownDetails.vue'
 import { formatEstimatedCost, formatLocalInstant, formatTokens } from '@/lib/format'
 import { quotaProgressTone } from '@/lib/quota-progress'
+import { presentCarpoolQuota } from '@shared/nexustoken/quota-presentation'
 
 import { presentCredentialFailureCategory } from './credential-failure-presenter'
 
@@ -52,6 +53,7 @@ const props = withDefaults(
     detailBusy: boolean
     detailLoaded: boolean
     detailError: string
+    hideFiveHourQuota?: boolean
     channelIcon?: string
     channelMark?: string
     capabilities: ChannelCapabilitiesDto
@@ -59,6 +61,7 @@ const props = withDefaults(
     saveName: (value: string) => Promise<string>
   }>(),
   {
+    hideFiveHourQuota: false,
     channelIcon: undefined,
     channelMark: undefined,
   },
@@ -178,7 +181,12 @@ const creditBalanceLabel = computed(() => {
   const credits = snapshot.value?.credits
   if (credits?.unlimited) return t('group.credentials.subscription.creditUnlimited')
   const balance = Number(credits?.balance)
-  return Number.isFinite(balance) && balance > 0 ? n(balance, { maximumFractionDigits: 20 }) : ''
+  return credits?.balance !== undefined &&
+    credits.balance !== '' &&
+    Number.isFinite(balance) &&
+    balance >= 0
+    ? n(balance, { maximumFractionDigits: 20 })
+    : ''
 })
 function isAccountWideQuotaWindow(window: CredentialQuotaWindowDto): boolean {
   return window.scope === 'account'
@@ -218,7 +226,9 @@ function quotaWindowGroupKey(window: CredentialQuotaWindowDto): string {
 
 // 呈现层统一排序：账号全局窗口优先；其余按同一模型/专属窗口成组，组内按时长升序。
 const quotaWindows = computed(() => {
-  const windows = snapshot.value?.quota_windows ?? []
+  const windows = (snapshot.value?.quota_windows ?? []).filter(
+    (window) => !props.hideFiveHourQuota || window.window_seconds !== 18000,
+  )
   const groupOrder = new Map<string, number>()
   for (const [index, window] of windows.entries()) {
     const key = quotaWindowGroupKey(window)
@@ -289,7 +299,7 @@ const resetCredits = computed(() => snapshot.value?.reset_credits ?? [])
 const availableResetCreditDetails = computed(() =>
   resetCredits.value.slice(0, resetCreditsAvailable.value),
 )
-const hasResetCredits = computed(() => supportsResetCredit.value && resetCreditsAvailable.value > 0)
+const hasResetCredits = computed(() => snapshot.value?.reset_credits_available !== undefined)
 type ResetCreditDotTone = 'default' | 'warning' | 'danger'
 const resetCreditDots = computed(() =>
   Array.from({ length: Math.min(resetCreditsAvailable.value, 5) }, (_, index) => {
@@ -404,6 +414,20 @@ function translatedQuotaLabel(labelKey: CredentialQuotaLabelKey, fallback: strin
 
 function quotaWindowLabel(window: CredentialQuotaWindowDto): string {
   const period = quotaWindowPeriodLabel(window.window_seconds)
+  if (window.scope === 'personal' || window.scope === 'vehicle') {
+    const subject = locale.value.startsWith('zh')
+      ? window.scope === 'personal'
+        ? '个人'
+        : '整车'
+      : locale.value.startsWith('ja')
+        ? window.scope === 'personal'
+          ? '個人'
+          : '共有枠'
+        : window.scope === 'personal'
+          ? 'Personal'
+          : 'Vehicle'
+    return `${subject} · ${period}`
+  }
   if (period && window.scope === 'account') return period
 
   if (window.label_key) {
@@ -552,6 +576,8 @@ function remainingPercent(window: CredentialQuotaWindowDto): number | undefined 
 }
 
 function quotaValueLabel(window: CredentialQuotaWindowDto): string {
+  const carpool = carpoolQuota(window)
+  if (carpool) return carpool.label
   const value = remainingPercent(window)
   if (value !== undefined) {
     return t('group.credentials.subscription.remainingPercent', { value: n(value) })
@@ -587,6 +613,8 @@ function quotaPeriodTooltip(window: CredentialQuotaWindowDto): string | undefine
 }
 
 function usedPercentValue(window: CredentialQuotaWindowDto): string {
+  const carpool = carpoolQuota(window)
+  if (carpool) return carpool.percentLabel
   const remaining = remainingPercent(window)
   return remaining === undefined ? '—' : `${n(100 - remaining)}%`
 }
@@ -598,8 +626,16 @@ function quotaTone(window: CredentialQuotaWindowDto): 'success' | 'warning' | 'd
 }
 
 function quotaFillStyle(window: CredentialQuotaWindowDto): Record<string, string> {
-  const value = remainingPercent(window)
+  const value = quotaProgressPercent(window)
   return value === undefined ? {} : { width: `${value}%` }
+}
+
+function carpoolQuota(window: CredentialQuotaWindowDto) {
+  return presentCarpoolQuota({ ...window, usedCostUSD: window.used_cost_usd }, locale.value)
+}
+
+function quotaProgressPercent(window: CredentialQuotaWindowDto): number | undefined {
+  return carpoolQuota(window)?.progress ?? remainingPercent(window)
 }
 
 function toggleDetails(): void {
@@ -844,12 +880,18 @@ function runMenuAction(
                 </IconButton>
               </template>
               <div class="subscription-account__menu">
-                <button type="button" :disabled="busy" @click="runMenuAction('download')">
+                <button
+                  v-if="item.connection_type === 'subscription'"
+                  type="button"
+                  :disabled="busy"
+                  @click="runMenuAction('download')"
+                >
                   <Download :size="15" aria-hidden="true" />{{
                     t('group.credentials.subscription.download')
                   }}
                 </button>
                 <button
+                  v-if="item.connection_type === 'subscription'"
                   type="button"
                   :disabled="busy || item.configured_status === 'disabled'"
                   @click="runMenuAction('refresh-credential')"
@@ -923,21 +965,21 @@ function runMenuAction(
         >
           <span
             class="subscription-account__quota-meter"
-            :role="remainingPercent(window) === undefined ? 'img' : 'progressbar'"
+            :role="quotaProgressPercent(window) === undefined ? 'img' : 'progressbar'"
             :aria-label="
-              remainingPercent(window) === undefined
+              quotaProgressPercent(window) === undefined
                 ? `${quotaWindowLabel(window)}: ${quotaValueLabel(window)}`
                 : quotaWindowLabel(window)
             "
-            :aria-valuemin="remainingPercent(window) === undefined ? undefined : 0"
-            :aria-valuemax="remainingPercent(window) === undefined ? undefined : 100"
-            :aria-valuenow="remainingPercent(window)"
+            :aria-valuemin="quotaProgressPercent(window) === undefined ? undefined : 0"
+            :aria-valuemax="quotaProgressPercent(window) === undefined ? undefined : 100"
+            :aria-valuenow="quotaProgressPercent(window)"
             :aria-valuetext="
-              remainingPercent(window) === undefined ? undefined : quotaValueLabel(window)
+              quotaProgressPercent(window) === undefined ? undefined : quotaValueLabel(window)
             "
           >
             <span
-              v-if="remainingPercent(window) !== undefined"
+              v-if="quotaProgressPercent(window) !== undefined"
               class="subscription-account__quota-fill"
               :style="quotaFillStyle(window)"
               aria-hidden="true"
@@ -1044,7 +1086,7 @@ function runMenuAction(
         </span>
         <span class="subscription-account__spacer"></span>
         <AppTooltip
-          v-if="hasResetCredits"
+          v-if="hasResetCredits && supportsResetCredit && resetCreditsAvailable > 0"
           :content="t('group.credentials.subscription.resetCreditsActionTooltip')"
         >
           <AppButton

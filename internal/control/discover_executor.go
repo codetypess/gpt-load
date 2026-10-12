@@ -77,62 +77,80 @@ func (s *Service) executeModelDiscovery(
 	var sequence uint32
 	for _, credential := range target.credentials {
 		models := make([]string, 0)
-		rawQuery := modelDiscoveryInitialQuery(target.channelID, clientProtocol)
-		seenCursors := make(map[string]struct{})
-		for pageNumber := 0; pageNumber < maxModelDiscoveryPages; pageNumber++ {
-			attemptID, identityErr := s.newExecutionID()
-			if identityErr != nil {
-				return ModelDiscoveryResult{}, fmt.Errorf("create discovery attempt identity: %w", app_errors.ErrInternalServer)
+		successfulCatalogs := 0
+		credentialInvalid := false
+		for _, initialRawQuery := range modelDiscoveryInitialQueries(target.channelID, clientProtocol) {
+			catalogModels := make([]string, 0)
+			rawQuery := initialRawQuery
+			seenCursors := make(map[string]struct{})
+			catalogComplete := false
+			for pageNumber := 0; pageNumber < maxModelDiscoveryPages; pageNumber++ {
+				attemptID, identityErr := s.newExecutionID()
+				if identityErr != nil {
+					return ModelDiscoveryResult{}, fmt.Errorf("create discovery attempt identity: %w", app_errors.ErrInternalServer)
+				}
+				sequence++
+				spec := execution.NewAttemptSpec(execution.AttemptSpec{
+					RequestID: requestID, AttemptID: attemptID, Sequence: sequence,
+					ChannelID: string(target.channelID),
+					RouteMode: execution.RouteMode(routeMode), ClientProtocol: clientProtocol,
+					Operation: execution.OperationListModels, Method: method, Path: path,
+					RawQuery: rawQuery,
+					Header:   applyControlHeaderRules(target.headerRules, credential.apiKey), Body: body,
+					ConfiguredHeaders: target.headerRules.ConfiguredNames(),
+					TargetConfig:      target.resolvedTarget.TargetConfig,
+					Timeouts:          executionTimeouts(target.timeouts),
+					Credential:        credential.snapshot,
+					Proxy:             credential.proxy,
+					ProxyFingerprint:  credential.proxyFingerprint,
+				})
+				if validationErr := spec.Validate(); validationErr != nil {
+					return ModelDiscoveryResult{}, fmt.Errorf("build discovery attempt: %w", app_errors.ErrInternalServer)
+				}
+				result := s.executor.Execute(discoveryCtx, spec)
+				if parentErr := ctx.Err(); parentErr != nil {
+					return ModelDiscoveryResult{}, parentErr
+				}
+				if errors.Is(discoveryCtx.Err(), context.DeadlineExceeded) {
+					return ModelDiscoveryResult{}, fmt.Errorf("discover upstream models: %w", app_errors.ErrBadGateway)
+				}
+				if result.Validate() != nil || result.Error != nil ||
+					result.StatusCode < http.StatusOK || result.StatusCode >= http.StatusMultipleChoices {
+					break
+				}
+				discoveredPage, parseErr := parseDiscoveredModelsPage(clientProtocol, result.Body)
+				if parseErr != nil {
+					break
+				}
+				catalogModels = append(catalogModels, discoveredPage.models...)
+				if len(models)+len(catalogModels) > maxModelDiscoveryModels {
+					credentialInvalid = true
+					break
+				}
+				if discoveredPage.nextRawQuery == "" {
+					catalogComplete = true
+					break
+				}
+				if _, repeated := seenCursors[discoveredPage.nextRawQuery]; repeated {
+					break
+				}
+				seenCursors[discoveredPage.nextRawQuery] = struct{}{}
+				rawQuery = discoveredPage.nextRawQuery
 			}
-			sequence++
-			spec := execution.NewAttemptSpec(execution.AttemptSpec{
-				RequestID: requestID, AttemptID: attemptID, Sequence: sequence,
-				ChannelID: string(target.channelID),
-				RouteMode: execution.RouteMode(routeMode), ClientProtocol: clientProtocol,
-				Operation: execution.OperationListModels, Method: method, Path: path,
-				RawQuery: rawQuery,
-				Header:   applyControlHeaderRules(target.headerRules, credential.apiKey), Body: body,
-				ConfiguredHeaders: target.headerRules.ConfiguredNames(),
-				TargetConfig:      target.resolvedTarget.TargetConfig,
-				Timeouts:          executionTimeouts(target.timeouts),
-				Credential:        credential.snapshot,
-				Proxy:             credential.proxy,
-				ProxyFingerprint:  credential.proxyFingerprint,
-			})
-			if validationErr := spec.Validate(); validationErr != nil {
-				return ModelDiscoveryResult{}, fmt.Errorf("build discovery attempt: %w", app_errors.ErrInternalServer)
-			}
-			result := s.executor.Execute(discoveryCtx, spec)
-			if parentErr := ctx.Err(); parentErr != nil {
-				return ModelDiscoveryResult{}, parentErr
-			}
-			if errors.Is(discoveryCtx.Err(), context.DeadlineExceeded) {
-				return ModelDiscoveryResult{}, fmt.Errorf("discover upstream models: %w", app_errors.ErrBadGateway)
-			}
-			if result.Validate() != nil || result.Error != nil ||
-				result.StatusCode < http.StatusOK || result.StatusCode >= http.StatusMultipleChoices {
+			if credentialInvalid {
 				break
 			}
-			discoveredPage, parseErr := parseDiscoveredModelsPage(clientProtocol, result.Body)
-			if parseErr != nil {
-				break
+			if catalogComplete {
+				models = append(models, catalogModels...)
+				successfulCatalogs++
 			}
-			models = append(models, discoveredPage.models...)
-			if len(models) > maxModelDiscoveryModels {
-				break
-			}
-			if discoveredPage.nextRawQuery == "" {
-				return s.mergeDiscoveredModels(
-					discoveryCtx,
-					normalizeDiscoveredModels(models),
-					target,
-				)
-			}
-			if _, repeated := seenCursors[discoveredPage.nextRawQuery]; repeated {
-				break
-			}
-			seenCursors[discoveredPage.nextRawQuery] = struct{}{}
-			rawQuery = discoveredPage.nextRawQuery
+		}
+		if !credentialInvalid && successfulCatalogs > 0 {
+			return s.mergeDiscoveredModels(
+				discoveryCtx,
+				normalizeDiscoveredModels(models),
+				target,
+			)
 		}
 	}
 	if parentErr := ctx.Err(); parentErr != nil {
@@ -316,9 +334,17 @@ func modelDiscoveryInitialQuery(channelID channel.ID, clientProtocol protocol.Pr
 	return values.Encode()
 }
 
+func modelDiscoveryInitialQueries(channelID channel.ID, clientProtocol protocol.Protocol) []string {
+	withClientVersion := modelDiscoveryInitialQuery(channelID, clientProtocol)
+	if clientProtocol == protocol.OpenAICompletions && usesCodexModelCatalog(channelID) {
+		return []string{"", withClientVersion}
+	}
+	return []string{withClientVersion}
+}
+
 func usesCodexModelCatalog(channelID channel.ID) bool {
 	switch channelID {
-	case channel.Sub2API, channel.CLIProxyAPI, channel.GPTLoad:
+	case channel.Sub2API, channel.NexusToken, channel.CLIProxyAPI, channel.GPTLoad:
 		return true
 	default:
 		return false

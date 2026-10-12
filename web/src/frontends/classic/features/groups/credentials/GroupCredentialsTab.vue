@@ -119,15 +119,20 @@ const { n, t } = useI18n()
 const toast = useToast()
 const filters = computed(() => parseCredentialRouteQuery(route.query))
 const routeState = computed(() => parseCredentialRouteState(route.query))
-const credentialsQuery = useQuery(
-  credentialCollectionQueryOptions(client, () => props.groupId, filters),
-)
+const credentialsQuery = useQuery({
+  ...credentialCollectionQueryOptions(client, () => props.groupId, filters),
+  // Read saved observations; the backend owns upstream quota polling.
+  refetchInterval: computed(() => (props.channelId === 'nexustoken' ? 30_000 : false)),
+})
 const channelsQuery = useQuery(channelsQueryOptions(client, ''))
 const channelDescriptor = computed(() =>
   channelsQuery.data.value?.items.find(({ channel_id }) => channel_id === props.channelId),
 )
 const authorizationMethods = computed(
   () => channelDescriptor.value?.connection.authorization_methods ?? [],
+)
+const accountCards = computed(
+  () => props.connectionType === 'subscription' || props.channelId === 'nexustoken',
 )
 const channelName = computed(() => channelDescriptor.value?.name ?? props.channelId)
 const channelNotices = computed(() => channelDescriptor.value?.notices ?? [])
@@ -1997,7 +2002,7 @@ async function runBatch(
           :pending="batchBusy || singleBusy"
           :can-select-all="collection.items.length > 0"
           :can-sync="
-            connectionType === 'subscription' &&
+            accountCards &&
             channelCapabilities.quota_observation &&
             selectedSubscriptionCredentialsReady
           "
@@ -2104,7 +2109,7 @@ async function runBatch(
         </template>
       </EmptyState>
       <template v-else>
-        <template v-if="connectionType === 'subscription'">
+        <template v-if="accountCards">
           <div class="group-credentials__accounts">
             <SubscriptionAccountCard
               v-for="item in collection.items"
@@ -2117,6 +2122,7 @@ async function runBatch(
               :detail-loaded="detailLoaded(item.credential_id)"
               :detail-error="detailError(item.credential_id)"
               :observation-error="observationError(item.credential_id)"
+              :hide-five-hour-quota="channelId === 'nexustoken'"
               :channel-icon="channelDescriptor?.icon"
               :channel-mark="channelDescriptor?.mark"
               :capabilities="channelCapabilities"

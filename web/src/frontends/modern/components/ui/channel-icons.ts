@@ -12,7 +12,7 @@ const rawIcons = {
   }),
 }
 
-const rasterIcons = import.meta.glob<string>('../../assets/channels/*.webp', {
+const rasterIcons = import.meta.glob<string>('../../assets/channels/*.{webp,png}', {
   eager: true,
   query: '?url',
   import: 'default',
@@ -47,7 +47,7 @@ for (const [path, source] of Object.entries(rasterIcons)) {
   const name = path
     .split('/')
     .pop()
-    ?.replace(/\.webp$/u, '')
+    ?.replace(/\.(?:webp|png)$/u, '')
   if (name) rasterIconsByName.set(name, source)
 }
 

@@ -48,6 +48,11 @@ const query = useQuery({
   queryFn: ({ signal }) => getCredentialDetail(client, props.group.id, props.row.id, signal),
 })
 const item = computed(() => query.data.value ?? props.row)
+const visibleQuotaWindows = computed(() =>
+  (item.value.observation?.windows ?? []).filter(
+    (window) => props.group.channelID !== 'nexustoken' || window.windowSeconds !== 18000,
+  ),
+)
 const state = computed(() => credentialStatus(item.value))
 const saved = ref<CredentialRow>()
 const nameDirty = ref(false)
@@ -233,12 +238,12 @@ useMessageSource(() =>
         :subscription="group.connectionType === 'subscription'"
         :group="group.id"
         :credential="row.id"
-        :quota-windows="item.observation?.windows ?? []"
+        :quota-windows="visibleQuotaWindows"
       />
       <CredentialWindowUsage
-        v-if="item.observation?.windows.length"
+        v-if="visibleQuotaWindows.length"
         v-show="!isMobile || mobileSection === 'usage'"
-        :windows="item.observation.windows"
+        :windows="visibleQuotaWindows"
       />
       <RPMTrend
         v-show="!isMobile || mobileSection === 'usage'"
@@ -302,7 +307,7 @@ useMessageSource(() =>
         </p>
       </section>
       <section
-        v-if="group.connectionType === 'subscription'"
+        v-if="group.connectionType === 'subscription' || group.channelID === 'nexustoken'"
         v-show="!isMobile || mobileSection === 'runtime'"
         class="modern-credential-detail-section"
       >

@@ -318,7 +318,7 @@ export function readCredential(value: unknown): CredentialRow {
     label: credentialDisplayText(
       text(row.name ?? ''),
       account ? text(account.email ?? account.email_mask ?? '') || text(row.mask) : text(row.mask),
-      text(row.connection_type),
+      account?.email ? 'subscription' : text(row.connection_type),
     ),
     mask: text(row.mask),
     account: account ? text(account.email ?? account.email_mask ?? '') : '',

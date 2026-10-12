@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import NexusTokenImport from '@shared/nexustoken/NexusTokenImport.vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ArrowRight, Plus, RefreshCw } from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
@@ -1328,6 +1329,17 @@ onBeforeUnmount(() => {
             hide-header
             compact
             @import-state="subscriptionImportState = $event"
+          />
+          <NexusTokenImport
+            v-else-if="draft.channel_id === 'nexustoken'"
+            v-model="draft.credentials"
+            :base-url="draft.params.base_url ?? ''"
+            :proxy="draftProxyOverride"
+            :disabled="payloadLocked"
+            :entry-disabled="draftProxyMutation === undefined"
+            @busy="
+              subscriptionImportState = { busy: $event, hasResults: Boolean(draft.credentials) }
+            "
           />
           <CredentialTextarea
             v-else

@@ -54,6 +54,7 @@ type ObservationQuotaWindow struct {
 	Limit         *float64                `json:"limit,omitempty"`
 	Remaining     *float64                `json:"remaining,omitempty"`
 	Utilization   *float64                `json:"utilization,omitempty"`
+	UsedCostUSD   *float64                `json:"used_cost_usd,omitempty"`
 	ResetAtMS     *int64                  `json:"reset_at_ms,omitempty"`
 	WindowSeconds *int64                  `json:"window_seconds,omitempty"`
 	ModelIDs      []string                `json:"model_ids,omitempty"`
@@ -105,6 +106,7 @@ type observationRefreshMode uint8
 const (
 	observationRefreshManual observationRefreshMode = iota
 	observationRefreshAfterReset
+	observationRefreshAutomatic
 )
 
 type observationFlight struct {
@@ -227,11 +229,30 @@ func (s *Service) refreshCredentialObservationOnce(
 	if expectedTarget != nil && !sameSubscriptionTarget(*expectedTarget, group) {
 		return CredentialObservationResponse{}, nil
 	}
+	if mode == observationRefreshAutomatic {
+		if !group.Enabled || credential.Status != models.CredentialStatusActive || credential.AuthState != models.CredentialAuthStateReady {
+			return CredentialObservationResponse{}, nil
+		}
+		if group.ChannelID == string(channel.NexusToken) && !s.nexusTokenObservationBound(group, credential) {
+			return CredentialObservationResponse{}, nil
+		}
+	}
 	network, err := s.credentialNetworkContext(ctx, s.db, group, credential)
 	if err != nil {
 		return CredentialObservationResponse{}, err
 	}
 	ctx = subscriptionruntime.WithNetworkContext(ctx, network)
+	if group.ChannelID == string(channel.NexusToken) {
+		select {
+		case s.observationSemaphore <- struct{}{}:
+			defer func() { <-s.observationSemaphore }()
+		case <-ctx.Done():
+			return CredentialObservationResponse{}, ctx.Err()
+		}
+		observeContext, cancelObserve := context.WithTimeout(ctx, defaultSubscriptionControlTimeout)
+		defer cancelObserve()
+		return s.refreshNexusTokenObservation(observeContext, group, credential, previous, flight)
+	}
 	if mode == observationRefreshAfterReset {
 		s.writeMu.Lock()
 		if !s.observationFlightCurrent(groupID, credentialID, flight) {
@@ -645,11 +666,16 @@ func (s *Service) loadObservationTarget(ctx context.Context, groupID, credential
 		if err := tx.Take(&group, groupID).Error; err != nil {
 			return err
 		}
-		if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeSubscription {
+		if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeSubscription && group.ChannelID != string(channel.NexusToken) {
 			return app_errors.ErrValidation
 		}
-		if _, supported := s.subscriptions.QuotaObservation(channel.ID(group.ChannelID)); !supported {
-			return app_errors.ErrValidation
+		if group.ChannelID != string(channel.NexusToken) {
+			if s.subscriptions == nil {
+				return app_errors.ErrValidation
+			}
+			if _, supported := s.subscriptions.QuotaObservation(channel.ID(group.ChannelID)); !supported {
+				return app_errors.ErrValidation
+			}
 		}
 		if err := tx.Where("id = ? AND group_id = ?", credentialID, groupID).Take(&credential).Error; err != nil {
 			return err
@@ -753,6 +779,16 @@ func mapCredentialObservation(row models.CredentialObservation) CredentialObserv
 	if len(row.SnapshotJSON) > 0 && string(row.SnapshotJSON) != "{}" {
 		var snapshot CredentialObservationSnapshot
 		if json.Unmarshal(row.SnapshotJSON, &snapshot) == nil {
+			// Older snapshots may mark multiple windows as primary. Preserve the
+			// first one, matching the merge policy and the public API contract.
+			primarySeen := false
+			for i := range snapshot.QuotaWindows {
+				window := &snapshot.QuotaWindows[i]
+				if window.IsPrimary {
+					window.IsPrimary = !primarySeen
+					primarySeen = true
+				}
+			}
 			response.Snapshot = &snapshot
 		}
 	}
@@ -800,7 +836,8 @@ func providerQuotaWindows(windows []ObservationQuotaWindow) []providerobservatio
 			ID: window.ID, Label: window.Label, LabelKey: window.LabelKey,
 			Scope: window.Scope, Unit: window.Unit, SourceID: window.SourceID,
 			Used: window.Used, Limit: window.Limit, Remaining: window.Remaining, Utilization: window.Utilization,
-			ResetAtMS: window.ResetAtMS, WindowSeconds: window.WindowSeconds, ModelIDs: window.ModelIDs,
+			UsedCostUSD: window.UsedCostUSD,
+			ResetAtMS:   window.ResetAtMS, WindowSeconds: window.WindowSeconds, ModelIDs: window.ModelIDs,
 			State: window.State, IsPrimary: window.IsPrimary,
 		})
 	}
