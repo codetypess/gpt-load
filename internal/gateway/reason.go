@@ -82,12 +82,14 @@ var (
 )
 
 type accessKeyCostLimitRuleError struct {
-	ID             uint             `json:"id"`
-	Kind           accessquota.Kind `json:"kind"`
-	LimitUSD       string           `json:"limit_usd"`
-	UsedUSD        string           `json:"used_usd"`
-	PeriodSeconds  int64            `json:"period_seconds,omitempty"`
-	WindowEndsAtMS *int64           `json:"window_ends_at_ms,omitempty"`
+	ID             uint                   `json:"id"`
+	Kind           accessquota.Kind       `json:"kind"`
+	LimitUSD       string                 `json:"limit_usd"`
+	UsedUSD        string                 `json:"used_usd"`
+	PeriodSeconds  int64                  `json:"period_seconds,omitempty"`
+	PeriodMode     accessquota.PeriodMode `json:"period_mode,omitempty"`
+	Timezone       string                 `json:"timezone,omitempty"`
+	WindowEndsAtMS *int64                 `json:"window_ends_at_ms,omitempty"`
 }
 
 type accessKeyCostLimitClientError struct {
@@ -126,9 +128,10 @@ func accessKeyCostLimitResponse(decision accessquota.Decision) accessKeyCostLimi
 	for _, rule := range decision.BlockingRules {
 		blocking = append(blocking, accessKeyCostLimitRuleError{
 			ID: rule.ID, Kind: rule.Kind,
-			LimitUSD:       pricing.FormatUSD(pricing.NanoUSD(rule.LimitNanoUSD)),
-			UsedUSD:        pricing.FormatUSD(pricing.NanoUSD(rule.UsedNanoUSD)),
-			PeriodSeconds:  rule.PeriodSeconds,
+			LimitUSD:      pricing.FormatUSD(pricing.NanoUSD(rule.LimitNanoUSD)),
+			UsedUSD:       pricing.FormatUSD(pricing.NanoUSD(rule.UsedNanoUSD)),
+			PeriodSeconds: rule.PeriodSeconds,
+			PeriodMode:    rule.PeriodMode, Timezone: rule.Timezone,
 			WindowEndsAtMS: cloneReasonInt64(rule.WindowEndsAtMS),
 		})
 	}
@@ -175,6 +178,9 @@ func accessKeyCostLimitMessage(decision accessquota.Decision) string {
 			continue
 		}
 		label := accessKeyCostLimitPeriodLabel(rule.PeriodSeconds) + " limit"
+		if rule.PeriodMode == accessquota.PeriodModeCalendarDay {
+			label = "calendar-day limit (" + rule.Timezone + ")"
+		}
 		if rule.WindowEndsAtMS != nil {
 			label += " (available again at " +
 				time.UnixMilli(*rule.WindowEndsAtMS).UTC().Format(time.RFC3339) + ")"

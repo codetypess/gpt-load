@@ -14,6 +14,7 @@ import IconButton from '@/components/ui/IconButton.vue'
 import QuotaProgressBar from '@/components/ui/QuotaProgressBar.vue'
 import { quotaProgressTone } from '@/lib/quota-progress'
 import { createUUID } from '@/lib/uuid'
+import { calendarDaySeconds, defaultQuotaTimezone } from '@shared/access-key-quota'
 
 import AccessKeyCostLimitWindowTime from './AccessKeyCostLimitWindowTime.vue'
 import type { AccessKeyCostLimitRuleDraft } from './access-key-patch'
@@ -22,6 +23,7 @@ const props = defineProps<{
   modelValue: AccessKeyCostLimitRuleDraft[]
   runtimeStatus: AccessKeyCostLimitStatusDto | null
   disabled: boolean
+  quotaTimezone?: string
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: AccessKeyCostLimitRuleDraft[]]
@@ -60,19 +62,21 @@ const periodicEnabled = computed({
   },
 })
 
-type PeriodUnit = 'seconds' | 'minutes' | 'hours' | 'days'
-const periodUnits: ReadonlyArray<{ value: PeriodUnit; seconds: number }> = [
+type DurationUnit = 'seconds' | 'minutes' | 'hours' | 'days'
+type PeriodUnit = DurationUnit | 'calendar_day'
+const periodUnits: ReadonlyArray<{ value: DurationUnit; seconds: number }> = [
   { value: 'seconds', seconds: 1 },
   { value: 'minutes', seconds: 60 },
   { value: 'hours', seconds: 3_600 },
   { value: 'days', seconds: 86_400 },
 ]
-const periodUnitOptions = computed(() =>
-  periodUnits.map((unit) => ({
+const periodUnitOptions = computed(() => [
+  ...periodUnits.map((unit) => ({
     value: unit.value,
     label: t(`accessKeys.drawer.costLimits.units.${unit.value}`),
   })),
-)
+  { value: 'calendar_day', label: t('accessKeys.drawer.costLimits.units.calendar_day') },
+])
 
 function updateRule(clientKey: string, patch: Partial<AccessKeyCostLimitRuleDraft>): void {
   emit(
@@ -110,7 +114,7 @@ function addRule(kind: 'total' | 'periodic'): void {
   ])
 }
 
-function periodUnit(seconds: number | undefined): PeriodUnit {
+function periodUnit(seconds: number | undefined): DurationUnit {
   const value = seconds ?? 0
   for (const unit of [...periodUnits].reverse()) {
     if (value > 0 && value % unit.seconds === 0) return unit.value
@@ -128,6 +132,7 @@ function periodValue(seconds: number | undefined): number {
 }
 
 function updatePeriodValue(rule: AccessKeyCostLimitRuleDraft, raw: string): void {
+  if (rule.period_mode === 'calendar_day') return
   const value = Number(raw)
   updateRule(rule.clientKey, {
     period_seconds: Number.isFinite(value)
@@ -137,15 +142,45 @@ function updatePeriodValue(rule: AccessKeyCostLimitRuleDraft, raw: string): void
 }
 
 function updatePeriodUnit(rule: AccessKeyCostLimitRuleDraft, unit: PeriodUnit): void {
+  if (unit === 'calendar_day' && rule.period_mode === 'calendar_day') return
+  if (unit === 'calendar_day') {
+    updateRule(rule.clientKey, {
+      durationDraft: rule.durationDraft ?? {
+        seconds: rule.period_seconds ?? 18000,
+        unit: periodUnit(rule.period_seconds),
+      },
+      period_seconds: calendarDaySeconds,
+      period_mode: 'calendar_day',
+      timezone: rule.timezone ?? props.quotaTimezone ?? defaultQuotaTimezone,
+    })
+    return
+  }
+  const previous =
+    rule.period_mode === 'calendar_day'
+      ? (rule.durationDraft ?? { seconds: 18000, unit: 'hours' as const })
+      : undefined
   updateRule(rule.clientKey, {
-    period_seconds: periodValue(rule.period_seconds) * unitSeconds(unit),
+    period_seconds:
+      (previous
+        ? previous.seconds / unitSeconds(previous.unit)
+        : periodValue(rule.period_seconds)) * unitSeconds(unit),
+    period_mode: undefined,
+    timezone: undefined,
+    durationDraft: undefined,
   })
 }
 
 function runtimeFor(
   rule: AccessKeyCostLimitRuleDraft,
 ): AccessKeyCostLimitRuleStatusDto | undefined {
-  return rule.id === undefined ? undefined : runtimeByID.value.get(rule.id)
+  const runtime = rule.id === undefined ? undefined : runtimeByID.value.get(rule.id)
+  return runtime &&
+    runtime.kind === rule.kind &&
+    (runtime.period_seconds ?? 0) === (rule.period_seconds ?? 0) &&
+    (runtime.period_mode ?? '') === (rule.period_mode ?? '') &&
+    (runtime.timezone ?? '') === (rule.timezone ?? '')
+    ? runtime
+    : undefined
 }
 
 function remainingPercent(runtime: AccessKeyCostLimitRuleStatusDto): number {
@@ -275,18 +310,26 @@ function runtimeValueText(runtime: AccessKeyCostLimitRuleStatusDto): string {
                 </AppTextInput>
                 <AppTextInput
                   :id="`cost-limit-period-${rule.clientKey}`"
-                  :model-value="String(periodValue(rule.period_seconds))"
+                  :model-value="
+                    rule.period_mode === 'calendar_day'
+                      ? '1'
+                      : String(periodValue(rule.period_seconds))
+                  "
                   :label="t('accessKeys.drawer.costLimits.period')"
                   type="number"
                   appearance="surface"
                   size="compact"
                   monospace
                   inputmode="numeric"
-                  :disabled="disabled"
+                  :disabled="disabled || rule.period_mode === 'calendar_day'"
                   @update:model-value="updatePeriodValue(rule, $event)"
                 />
                 <AppSelect
-                  :model-value="periodUnit(rule.period_seconds)"
+                  :model-value="
+                    rule.period_mode === 'calendar_day'
+                      ? 'calendar_day'
+                      : periodUnit(rule.period_seconds)
+                  "
                   :label="t('accessKeys.drawer.costLimits.unit')"
                   :options="periodUnitOptions"
                   variant="embedded"
@@ -322,6 +365,13 @@ function runtimeValueText(runtime: AccessKeyCostLimitRuleStatusDto): string {
                 <span v-else aria-hidden="true"></span>
               </div>
             </div>
+            <p v-if="rule.period_mode === 'calendar_day'" class="cost-limit-rule__calendar-hint">
+              {{
+                t('accessKeys.drawer.costLimits.calendarDayHint', {
+                  timezone: rule.timezone ?? quotaTimezone ?? defaultQuotaTimezone,
+                })
+              }}
+            </p>
             <div v-if="runtimeFor(rule)" class="cost-limit-rule__runtime">
               <QuotaProgressBar
                 :value="runtimeProgressValue(runtimeFor(rule)!)"
@@ -346,6 +396,11 @@ function runtimeValueText(runtime: AccessKeyCostLimitRuleStatusDto): string {
 </template>
 
 <style scoped>
+.cost-limit-rule__calendar-hint {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
 .cost-limit-editor {
   display: grid;
   min-width: 0;

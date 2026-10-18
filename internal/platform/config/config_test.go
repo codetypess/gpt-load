@@ -22,6 +22,9 @@ func TestLoadUsesDefaultConfiguration(t *testing.T) {
 	if cfg.Server.Host != "127.0.0.1" {
 		t.Fatalf("Host = %q, want 127.0.0.1", cfg.Server.Host)
 	}
+	if cfg.AccessKeyQuotaTimezone != "Asia/Shanghai" {
+		t.Fatalf("quota timezone = %q", cfg.AccessKeyQuotaTimezone)
+	}
 	if cfg.Server.Port != 3001 {
 		t.Fatalf("Port = %d, want 3001", cfg.Server.Port)
 	}
@@ -445,6 +448,8 @@ func TestLoadRejectsInvalidRequiredAndNumericValues(t *testing.T) {
 		{name: "auth key with tab", env: map[string]string{"AUTH_KEY": "admin\tkey"}},
 		{name: "auth key with unicode whitespace", env: map[string]string{"AUTH_KEY": "admin\u00a0key"}},
 		{name: "invalid port", env: map[string]string{"AUTH_KEY": "x", "PORT": "nope"}},
+		{name: "invalid quota timezone", env: map[string]string{"AUTH_KEY": "x", "ACCESS_KEY_QUOTA_TIMEZONE": "Invalid/Zone"}},
+		{name: "implicit quota timezone", env: map[string]string{"AUTH_KEY": "x", "ACCESS_KEY_QUOTA_TIMEZONE": "Local"}},
 		{name: "port out of range", env: map[string]string{"AUTH_KEY": "x", "PORT": "70000"}},
 		{name: "invalid shutdown timeout", env: map[string]string{"AUTH_KEY": "x", "GRACEFUL_SHUTDOWN_TIMEOUT": "0"}},
 		{name: "invalid read timeout", env: map[string]string{"AUTH_KEY": "x", "READ_TIMEOUT": "0"}},
@@ -518,6 +523,7 @@ func clearEnvironment(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for _, key := range []string{
 		"HOST", "PORT", "DATA_DIR", "DATABASE_DSN", "ENCRYPTION_KEY", "AUTH_KEY",
+		"ACCESS_KEY_QUOTA_TIMEZONE",
 		"LOG_LEVEL", "LOG_FORMAT", "GRACEFUL_SHUTDOWN_TIMEOUT",
 		"READ_TIMEOUT", "IDLE_TIMEOUT", "MODELS_DEV_AUTO_SYNC_ENABLED",
 		"DATABASE_MAX_OPEN_CONNECTIONS", "DATABASE_MAX_IDLE_CONNECTIONS",

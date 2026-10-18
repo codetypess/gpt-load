@@ -416,6 +416,9 @@ func newAccessKeyView(input AccessKeyConfig) AccessKeyView {
 		if rules[i].PeriodSeconds != rules[j].PeriodSeconds {
 			return rules[i].PeriodSeconds < rules[j].PeriodSeconds
 		}
+		if rules[i].PeriodMode != rules[j].PeriodMode {
+			return rules[i].PeriodMode < rules[j].PeriodMode
+		}
 		return rules[i].ID < rules[j].ID
 	})
 	return AccessKeyView{

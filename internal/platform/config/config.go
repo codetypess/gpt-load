@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+	_ "time/tzdata"
 
 	"github.com/joho/godotenv"
 	"github.com/pion/stun/v3"
@@ -128,6 +130,7 @@ type CodexLiveICEServer struct {
 // Config contains static environment configuration for the application process.
 type Config struct {
 	ClientIPHeader            string
+	AccessKeyQuotaTimezone    string
 	TrustedProxies            []string
 	Server                    ServerConfig
 	DataDir                   string
@@ -153,6 +156,10 @@ type Settings = map[string]any
 // .env file is loaded when present, but existing environment variables always win.
 func Load() (*Config, error) {
 	_ = godotenv.Load()
+	quotaTimezone := valueOrDefault("ACCESS_KEY_QUOTA_TIMEZONE", "Asia/Shanghai")
+	if _, err := time.LoadLocation(quotaTimezone); err != nil || quotaTimezone == "Local" || len(quotaTimezone) > 64 {
+		return nil, fmt.Errorf("ACCESS_KEY_QUOTA_TIMEZONE must be an explicit IANA timezone")
+	}
 	clientIPHeader := strings.TrimSpace(os.Getenv("CLIENT_IP_HEADER"))
 	var trustedProxies []string
 	if value := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES")); value != "" {
@@ -277,8 +284,9 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		ClientIPHeader: clientIPHeader,
-		TrustedProxies: trustedProxies,
+		ClientIPHeader:         clientIPHeader,
+		AccessKeyQuotaTimezone: quotaTimezone,
+		TrustedProxies:         trustedProxies,
 		Server: ServerConfig{
 			Host:                    valueOrDefault("HOST", defaultHost),
 			Port:                    port,

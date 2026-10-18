@@ -66,7 +66,7 @@ func (s *Service) CreateAccessKeyIdempotent(
 	if err != nil {
 		return AccessKeyCreateResult{}, err
 	}
-	costLimitRules, err := normalizeAccessKeyCostLimitRules(request.CostLimitRules, false)
+	costLimitRules, err := s.normalizeAccessKeyCostLimitRules(request.CostLimitRules, false)
 	if err != nil {
 		return AccessKeyCreateResult{}, err
 	}

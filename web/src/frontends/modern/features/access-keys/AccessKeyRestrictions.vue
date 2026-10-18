@@ -81,6 +81,8 @@ const entries = computed<QuotaEntry[]>(() => {
       limit <= 0n ||
       window.kind !== rule.kind ||
       (window.period_seconds ?? 0) !== (rule.period_seconds ?? 0) ||
+      (window.period_mode ?? '') !== (rule.period_mode ?? '') ||
+      (window.timezone ?? '') !== (rule.timezone ?? '') ||
       accessNanoUSD(window.limit_usd) !== limit
     )
       return { rule }
@@ -114,6 +116,8 @@ function percentText(entry: QuotaEntry): string {
 }
 function ruleName(rule: CostRule): string {
   if (rule.kind === 'total') return t('accessKeys.totalQuota')
+  if (rule.period_mode === 'calendar_day')
+    return t('accessKeys.calendarDay') + ` · ${rule.timezone}`
   if (!rule.period_seconds) return t('accessKeys.periodicQuota')
   const unit = rule.period_seconds % periodUnits.day === 0 ? 'day' : 'hour'
   return t('accessKeys.every', {

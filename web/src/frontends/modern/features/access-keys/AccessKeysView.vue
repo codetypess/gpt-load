@@ -654,6 +654,7 @@ onScopeDispose(() => {
     :key="`${panel}-${selectedID}`"
     :mode="panel"
     :hint="filters"
+    :quota-timezone="query.data.value?.quota_timezone"
     @close="setPanel(undefined)"
     @saved="saved"
     @deleted="deleted()"

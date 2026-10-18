@@ -29,6 +29,8 @@ type Rule struct {
 	Kind          Kind
 	LimitNanoUSD  int64
 	PeriodSeconds int64
+	PeriodMode    PeriodMode
+	Timezone      string
 }
 
 type RestoredState struct {
@@ -119,6 +121,7 @@ type accessKeyEntry struct {
 
 type runtimeRule struct {
 	definition        Rule
+	location          *time.Location
 	usedNanoUSD       int64
 	windowStartedAtMS *int64
 	windowEndsAtMS    *int64
@@ -211,7 +214,9 @@ func (runtime *Runtime) Reconcile(definitions map[uint][]Rule) error {
 					continue
 				}
 				if previous.definition.Kind != rule.definition.Kind ||
-					previous.definition.PeriodSeconds != rule.definition.PeriodSeconds {
+					previous.definition.PeriodSeconds != rule.definition.PeriodSeconds ||
+					previous.definition.PeriodMode != rule.definition.PeriodMode ||
+					previous.definition.Timezone != rule.definition.Timezone {
 					current.mu.Unlock()
 					return fmt.Errorf(
 						"reconcile access quota rule %d: kind or period changed without revision",
@@ -254,8 +259,7 @@ func (runtime *Runtime) Admit(accessKeyID uint, now time.Time) (Ticket, Decision
 		if rule.definition.Kind != KindPeriodic || !periodicInactive(rule, nowMS) {
 			continue
 		}
-		startedAt := nowMS
-		endsAt := now.Add(time.Duration(rule.definition.PeriodSeconds) * time.Second).UnixMilli()
+		startedAt, endsAt := rule.window(now)
 		rule.windowStartedAtMS = &startedAt
 		rule.windowEndsAtMS = &endsAt
 		rule.usedNanoUSD = 0
@@ -450,7 +454,10 @@ func normalizeDefinitions(definitions map[uint][]Rule) (map[uint][]Rule, error) 
 func validateRules(accessKeyID uint, rules []Rule, globalRuleIDs map[uint]uint) error {
 	totalCount := 0
 	periodicCount := 0
-	periods := make(map[int64]struct{})
+	periods := make(map[struct {
+		seconds int64
+		mode    PeriodMode
+	}]struct{})
 	for _, rule := range rules {
 		if rule.ID == 0 || rule.Revision == 0 || rule.LimitNanoUSD <= 0 {
 			return fmt.Errorf("reconcile access quota rule for key %d: invalid identity, revision, or limit", accessKeyID)
@@ -459,6 +466,9 @@ func validateRules(accessKeyID uint, rules []Rule, globalRuleIDs map[uint]uint) 
 			return fmt.Errorf("reconcile access quota rule %d: duplicate across keys %d and %d", rule.ID, owner, accessKeyID)
 		}
 		globalRuleIDs[rule.ID] = accessKeyID
+		if err := rule.ValidatePeriod(); err != nil {
+			return fmt.Errorf("reconcile access quota rule %d: %w", rule.ID, err)
+		}
 		switch rule.Kind {
 		case KindTotal:
 			totalCount++
@@ -470,10 +480,14 @@ func validateRules(accessKeyID uint, rules []Rule, globalRuleIDs map[uint]uint) 
 			if rule.PeriodSeconds < MinPeriodSeconds || rule.PeriodSeconds > MaxPeriodSeconds {
 				return fmt.Errorf("reconcile periodic access quota rule %d: period is out of range", rule.ID)
 			}
-			if _, exists := periods[rule.PeriodSeconds]; exists {
+			identity := struct {
+				seconds int64
+				mode    PeriodMode
+			}{rule.PeriodSeconds, rule.PeriodMode}
+			if _, exists := periods[identity]; exists {
 				return fmt.Errorf("reconcile periodic access quota rule %d: duplicate period", rule.ID)
 			}
-			periods[rule.PeriodSeconds] = struct{}{}
+			periods[identity] = struct{}{}
 		default:
 			return fmt.Errorf("reconcile access quota rule %d: invalid kind %q", rule.ID, rule.Kind)
 		}
@@ -492,6 +506,9 @@ func sortRules(rules []Rule) {
 		}
 		if left.PeriodSeconds != right.PeriodSeconds {
 			return left.PeriodSeconds < right.PeriodSeconds
+		}
+		if left.PeriodMode != right.PeriodMode {
+			return left.PeriodMode < right.PeriodMode
 		}
 		return left.ID < right.ID
 	})
@@ -538,6 +555,10 @@ func newAccessKeyEntry(rules []Rule) *accessKeyEntry {
 	entry := &accessKeyEntry{rules: make([]*runtimeRule, 0, len(rules)), byID: make(map[uint]*runtimeRule, len(rules))}
 	for _, definition := range rules {
 		rule := &runtimeRule{definition: definition, snapshotVersion: 1}
+		if definition.PeriodMode == PeriodModeCalendarDay {
+			// Definitions were validated before constructing the entry.
+			rule.location, _ = time.LoadLocation(definition.Timezone)
+		}
 		entry.rules = append(entry.rules, rule)
 		entry.byID[definition.ID] = rule
 	}
@@ -572,9 +593,9 @@ func applyRestoredState(rule *runtimeRule, state RestoredState) error {
 		if state.WindowGeneration == 0 {
 			return fmt.Errorf("restore periodic access quota rule %d: active state has no generation", rule.definition.ID)
 		}
-		windowDurationMS := *state.WindowEndsAtMS - *state.WindowStartedAtMS
-		if windowDurationMS != rule.definition.PeriodSeconds*int64(time.Second/time.Millisecond) {
-			return fmt.Errorf("restore periodic access quota rule %d: window duration does not match period", rule.definition.ID)
+		start, end := rule.window(time.UnixMilli(*state.WindowStartedAtMS))
+		if start != *state.WindowStartedAtMS || end != *state.WindowEndsAtMS {
+			return fmt.Errorf("restore periodic access quota rule %d: window does not match period", rule.definition.ID)
 		}
 	}
 	rule.usedNanoUSD = state.UsedNanoUSD
@@ -629,6 +650,11 @@ func ruleViewLocked(rule *runtimeRule, nowMS int64) RuleView {
 		Status: RuleStatusAvailable, WindowGeneration: rule.windowGeneration,
 	}
 	if rule.definition.Kind == KindPeriodic && periodicInactive(rule, nowMS) {
+		if rule.definition.PeriodMode == PeriodModeCalendarDay {
+			start, end := rule.window(time.UnixMilli(nowMS))
+			view.WindowStartedAtMS, view.WindowEndsAtMS = &start, &end
+			return view
+		}
 		view.Status = RuleStatusInactive
 		return view
 	}

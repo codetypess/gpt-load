@@ -66,6 +66,7 @@ const props = defineProps<{
   mode: 'create' | 'detail' | 'copy'
   id?: number
   hint: AccessFilters
+  quotaTimezone?: string
 }>()
 const emit = defineEmits<{ close: []; saved: [row: AccessKey, created: boolean]; deleted: [] }>()
 const { t, n, locale } = useI18n()
@@ -735,6 +736,7 @@ onScopeDispose(() => {
             v-show="!isMobile || mobileTab === 'quota'"
             v-model="draft.rules"
             data-mobile-section="quota"
+            :quota-timezone="quotaTimezone"
             :runtime="base?.cost_limit_status"
             :disabled="pending"
             :reset-disabled="dirty"

@@ -1,4 +1,5 @@
 import { readConcurrency, type ConcurrencyView } from '@shared/concurrency'
+import { isQuotaPeriodValid, isQuotaTimezone } from '@shared/access-key-quota'
 import type { ApiClient } from '@shared/http/client'
 import { InvalidResponseError } from '@shared/http/errors'
 import { boolean, integer, list, oneOf, record, text } from './response'
@@ -17,6 +18,8 @@ export interface CostRule {
   kind: 'total' | 'periodic'
   limit_usd: string
   period_seconds?: number
+  period_mode?: 'calendar_day'
+  timezone?: string
 }
 export interface CostWindow extends CostRule {
   id: number
@@ -65,6 +68,7 @@ export interface AccessFilters {
   expiry: '' | 'never' | 'active' | 'expired'
 }
 export interface AccessCollection {
+  quota_timezone?: string
   items: AccessKeyRow[]
   summary: { total: number; active: number; disabled: number }
   pagination: { page: number; page_size: number; total_items: number; total_pages: number }
@@ -93,12 +97,20 @@ const decimal = (value: unknown) => {
 function readRule(value: unknown): CostRule {
   const row = record(value)
   const kind = oneOf(row.kind, ['total', 'periodic'] as const)
-  return {
+  const rule: CostRule = {
     id: integer(row.id, 1),
     kind,
     limit_usd: decimal(row.limit_usd),
     ...(kind === 'periodic' ? { period_seconds: integer(row.period_seconds, 60) } : {}),
+    ...(row.period_mode === undefined
+      ? {}
+      : { period_mode: oneOf(row.period_mode, ['calendar_day'] as const) }),
+    ...(row.timezone === undefined ? {} : { timezone: text(row.timezone) }),
   }
+  if (kind === 'total' ? rule.period_mode || rule.timezone : !isQuotaPeriodValid(rule))
+    throw new InvalidResponseError()
+  if (rule.period_mode && !isQuotaTimezone(rule.timezone)) throw new InvalidResponseError()
+  return rule
 }
 function readWindow(value: unknown): CostWindow {
   const row = record(value)
@@ -186,7 +198,10 @@ export async function getAccessKeys(
   const summary = record(data.summary)
   const pagination = record(data.pagination)
   const window = record(data.usage_window)
+  if (data.quota_timezone !== undefined && !isQuotaTimezone(data.quota_timezone))
+    throw new InvalidResponseError()
   return {
+    ...(data.quota_timezone === undefined ? {} : { quota_timezone: text(data.quota_timezone) }),
     items: list(data.items).map(readAccessKeyRow),
     summary: {
       total: integer(summary.total),

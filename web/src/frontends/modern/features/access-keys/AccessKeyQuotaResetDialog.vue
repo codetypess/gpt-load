@@ -38,6 +38,8 @@ function select(id: number, checked: boolean): void {
 }
 function ruleLabel(rule: CostRule): string {
   if (rule.kind === 'total') return t('accessKeys.totalQuota')
+  if (rule.period_mode === 'calendar_day')
+    return t('accessKeys.calendarDay') + ` · ${rule.timezone}`
   const seconds = rule.period_seconds!
   const unit = seconds % periodUnits.day === 0 ? 'day' : 'hour'
   return t('accessKeys.every', {

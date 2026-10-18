@@ -7,24 +7,62 @@ import {
   AppButton,
   AppFormSection,
   AppIconButton,
-  AppSegmentedField,
+  AppSelect,
   AppTextField,
 } from '@modern/components/ui'
 import { accessTime, accessUSD } from './access-key-display'
 import { periodUnits, ruleDraft, type RuleDraft } from './access-key-draft'
+import { defaultQuotaTimezone } from '@shared/access-key-quota'
 const props = defineProps<{
   runtime?: AccessKey['cost_limit_status']
   disabled: boolean
   resetDisabled: boolean
   error?: string
+  quotaTimezone?: string
 }>()
 const rules = defineModel<RuleDraft[]>({ required: true })
 defineEmits<{ reset: [] }>()
 const { t, locale } = useI18n()
 const units = computed(() =>
-  Object.keys(periodUnits).map((value) => ({ value, label: t('accessKeys.units.' + value) })),
+  [...Object.keys(periodUnits), 'calendar_day'].map((value) => ({
+    value,
+    label: t('accessKeys.units.' + value),
+  })),
 )
-const byID = computed(() => new Map(props.runtime?.rules.map((rule) => [rule.id, rule])))
+const byID = computed(
+  () =>
+    new Map(
+      props.runtime?.rules
+        .filter((runtime) => {
+          const rule = rules.value.find((candidate) => candidate.id === runtime.id)
+          if (!rule || rule.kind !== runtime.kind) return false
+          if (rule.kind === 'total') return true
+          const calendar = rule.unit === 'calendar_day'
+          const seconds = calendar
+            ? 86400
+            : Number(rule.period) * periodUnits[rule.unit as keyof typeof periodUnits]
+          return (
+            Math.abs(seconds - (runtime.period_seconds ?? 0)) < 0.0000001 &&
+            (calendar ? 'calendar_day' : '') === (runtime.period_mode ?? '') &&
+            (calendar ? (rule.timezone ?? defaultQuotaTimezone) : '') === (runtime.timezone ?? '')
+          )
+        })
+        .map((rule) => [rule.id, rule]),
+    ),
+)
+function updateUnit(rule: RuleDraft, value: string): void {
+  if (value === rule.unit) return
+  if (value === 'calendar_day') {
+    rule.durationDraft = { period: rule.period, unit: rule.unit }
+    rule.period = '1'
+    rule.timezone = rule.timezone ?? props.quotaTimezone ?? defaultQuotaTimezone
+  } else if (rule.unit === 'calendar_day') {
+    rule.period = rule.durationDraft?.period ?? '5'
+    rule.durationDraft = undefined
+    rule.timezone = undefined
+  }
+  rule.unit = value
+}
 function add(kind: 'total' | 'periodic'): void {
   if (
     props.disabled ||
@@ -75,16 +113,17 @@ function add(kind: 'total' | 'periodic'): void {
             label-hidden
             inputmode="decimal"
             size="xs"
-            :disabled="disabled"
+            :disabled="disabled || rule.unit === 'calendar_day'"
             :invalid="Boolean(error)"
           />
-          <AppSegmentedField
-            v-model="rule.unit"
+          <AppSelect
+            :model-value="rule.unit"
             :label="t('accessKeys.unit')"
             label-hidden
             :options="units"
             size="xs"
             :disabled="disabled"
+            @update:model-value="updateUnit(rule, $event)"
           />
         </div>
         <AppIconButton
@@ -96,6 +135,16 @@ function add(kind: 'total' | 'periodic'): void {
           @click="rules = rules.filter((item) => item.clientKey !== rule.clientKey)"
         />
       </div>
+      <p
+        v-if="rule.kind === 'periodic' && rule.unit === 'calendar_day'"
+        class="modern-access-quota-runtime"
+      >
+        {{
+          t('accessKeys.calendarDayHint', {
+            timezone: rule.timezone ?? quotaTimezone ?? defaultQuotaTimezone,
+          })
+        }}
+      </p>
       <div v-if="rule.id && byID.get(rule.id)" class="modern-access-quota-runtime">
         <span
           >{{ t('accessKeys.remaining') }}
@@ -170,7 +219,7 @@ function add(kind: 'total' | 'periodic'): void {
 .modern-access-quota-period {
   grid-area: period;
   display: grid;
-  grid-template-columns: max-content 52px max-content;
+  grid-template-columns: max-content 52px 120px;
   align-items: center;
   gap: var(--modern-space-1-5);
   justify-self: start;

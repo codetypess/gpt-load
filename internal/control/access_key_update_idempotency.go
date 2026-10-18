@@ -40,7 +40,7 @@ func (s *Service) UpdateAccessKeyIdempotent(ctx context.Context, idempotencyKey 
 		digestRequest.PriceMultiplier.Value = pricing.FormatPriceMultiplier(multiplier)
 	}
 	if request.CostLimitRules.Set {
-		rules, err := normalizeAccessKeyCostLimitRules(request.CostLimitRules, true)
+		rules, err := s.normalizeAccessKeyCostLimitRules(request.CostLimitRules, true)
 		if err != nil {
 			return AccessKeyMetadata{}, err
 		}

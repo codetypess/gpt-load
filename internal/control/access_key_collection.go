@@ -43,10 +43,11 @@ type AccessKeyUsageWindow struct {
 }
 
 type AccessKeyCollectionResponse struct {
-	UsageWindow *AccessKeyUsageWindow         `json:"usage_window,omitempty"`
-	Summary     AccessKeyCollectionSummary    `json:"summary"`
-	Items       []AccessKeyCollectionItem     `json:"items"`
-	Pagination  AccessKeyCollectionPagination `json:"pagination"`
+	QuotaTimezone string                        `json:"quota_timezone"`
+	UsageWindow   *AccessKeyUsageWindow         `json:"usage_window,omitempty"`
+	Summary       AccessKeyCollectionSummary    `json:"summary"`
+	Items         []AccessKeyCollectionItem     `json:"items"`
+	Pagination    AccessKeyCollectionPagination `json:"pagination"`
 }
 
 type accessKeyCollectionRecord struct {
@@ -110,6 +111,7 @@ func (s *Service) ListAccessKeyCollection(
 		}
 	}
 	result := queryAccessKeyCollectionRecords(records, query)
+	result.QuotaTimezone = s.quotaTimezone()
 	result.UsageWindow = &AccessKeyUsageWindow{ObservedAtMS: observedAtMS, Range: "7d", FromMS: usageQuery.FromMS, ToMS: usageQuery.ToMS}
 	return result, nil
 }
@@ -154,7 +156,7 @@ func (s *Service) captureAccessKeyCollectionRecords(
 		if usageErr != nil {
 			return usageErr
 		}
-		return tx.Order("access_key_id ASC, CASE WHEN kind = 'total' THEN 0 ELSE 1 END ASC, period_seconds ASC, id ASC").
+		return tx.Order("access_key_id ASC, CASE WHEN kind = 'total' THEN 0 ELSE 1 END ASC, period_seconds ASC, period_mode ASC, id ASC").
 			Find(&costLimitRows).Error
 	}); err != nil {
 		if parentErr := ctx.Err(); parentErr != nil {

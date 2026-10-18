@@ -537,6 +537,8 @@ export interface AccessKeyCostLimitRuleDto {
   kind: AccessKeyCostLimitKind
   limit_usd: string
   period_seconds: number
+  period_mode?: 'calendar_day'
+  timezone?: string
 }
 
 export interface AccessKeyCostLimitRuleStatusDto extends AccessKeyCostLimitRuleDto {
@@ -612,6 +614,7 @@ export interface AccessKeyCollectionPaginationDto {
 }
 
 export interface AccessKeyCollectionResponseDto {
+  quota_timezone?: string
   usage_window: { range: '7d'; from_ms: number; to_ms: number; observed_at_ms: number }
   summary: AccessKeyCollectionSummaryDto
   items: AccessKeyCollectionItemDto[]

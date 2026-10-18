@@ -1,4 +1,5 @@
 import { readConcurrency } from '@shared/concurrency'
+import { isQuotaPeriodValid, isQuotaTimezone, quotaPeriodIdentity } from '@shared/access-key-quota'
 import { keepPreviousData, queryOptions } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
@@ -69,6 +70,8 @@ export interface AccessKeyCostLimitRuleInput {
   kind: AccessKeyCostLimitKind
   limit_usd: string
   period_seconds?: number
+  period_mode?: 'calendar_day'
+  timezone?: string
 }
 
 export type UpdateAccessKeyRequest = Partial<{
@@ -102,11 +105,24 @@ const metadataFields = [
   'updated_at_ms',
 ] as const
 const optionFields = ['id', 'name', 'status', 'key_suffix'] as const
-const collectionFields = ['summary', 'items', 'pagination', 'usage_window'] as const
+const collectionFields = [
+  'summary',
+  'items',
+  'pagination',
+  'usage_window',
+  'quota_timezone',
+] as const
 const collectionSummaryFields = ['total', 'active', 'disabled'] as const
 const collectionPaginationFields = ['page', 'page_size', 'total_items', 'total_pages'] as const
 const collectionItemFields = [...metadataFields, 'expired', 'last_request_at_ms', 'usage'] as const
-const costLimitRuleFields = ['id', 'kind', 'limit_usd', 'period_seconds'] as const
+const costLimitRuleFields = [
+  'id',
+  'kind',
+  'limit_usd',
+  'period_seconds',
+  'period_mode',
+  'timezone',
+] as const
 const costLimitRuleStatusFields = [
   ...costLimitRuleFields,
   'used_usd',
@@ -173,12 +189,20 @@ export function projectAccessKeyCostLimitRule(value: unknown): AccessKeyCostLimi
   const record = projectRecord(value)
   assertNoSecretLikeFields(record, costLimitRuleFields)
   const kind = projectEnum(record.kind, ['total', 'periodic'] as const)
-  return {
+  const rule: AccessKeyCostLimitRuleDto = {
     id: projectSafeInteger(record.id, { minimum: 1 }),
     kind,
     limit_usd: projectUSD(record.limit_usd, true),
     period_seconds: projectCostLimitPeriod(record.period_seconds, kind),
+    ...(record.period_mode === undefined
+      ? {}
+      : { period_mode: projectEnum(record.period_mode, ['calendar_day'] as const) }),
+    ...(record.timezone === undefined ? {} : { timezone: projectString(record.timezone) }),
   }
+  if (kind === 'total' ? rule.period_mode || rule.timezone : !isQuotaPeriodValid(rule))
+    invalidResponse()
+  if (rule.period_mode && !isQuotaTimezone(rule.timezone)) invalidResponse()
+  return rule
 }
 
 export function projectAccessKeyCostLimitRuleStatus(
@@ -222,7 +246,7 @@ export function projectAccessKeyCostLimitRuleStatus(
 
 function validCostLimitRuleSet(rules: readonly AccessKeyCostLimitRuleDto[]): boolean {
   const ids = new Set<number>()
-  const periods = new Set<number>()
+  const periods = new Set<string>()
   let totalCount = 0
   let periodicCount = 0
   for (const rule of rules) {
@@ -231,8 +255,9 @@ function validCostLimitRuleSet(rules: readonly AccessKeyCostLimitRuleDto[]): boo
     if (rule.kind === 'total') totalCount += 1
     else {
       periodicCount += 1
-      if (periods.has(rule.period_seconds)) return false
-      periods.add(rule.period_seconds)
+      const identity = quotaPeriodIdentity(rule)
+      if (periods.has(identity)) return false
+      periods.add(identity)
     }
   }
   return totalCount <= 1 && periodicCount <= 10
@@ -276,12 +301,15 @@ export function projectAccessKeyMetadata(value: unknown): AccessKeyDto {
     costLimitStatus !== null &&
     JSON.stringify(costLimitRules) !==
       JSON.stringify(
-        costLimitStatus.rules.map(({ id, kind, limit_usd, period_seconds }) => ({
-          id,
-          kind,
-          limit_usd,
-          period_seconds,
-        })),
+        costLimitStatus.rules.map(
+          ({ id, kind, limit_usd, period_seconds, period_mode, timezone }) => ({
+            id,
+            kind,
+            limit_usd,
+            period_seconds,
+            ...(period_mode ? { period_mode, timezone } : {}),
+          }),
+        ),
       )
   ) {
     invalidResponse()
@@ -390,7 +418,17 @@ export function projectAccessKeyCollection(value: unknown): AccessKeyCollectionR
     to_ms: projectEpochMilliseconds(window.to_ms),
   }
   if (usage_window.to_ms <= usage_window.from_ms) invalidResponse()
-  return { summary, items, pagination, usage_window }
+  if (record.quota_timezone !== undefined && !isQuotaTimezone(record.quota_timezone))
+    invalidResponse()
+  return {
+    summary,
+    items,
+    pagination,
+    usage_window,
+    ...(record.quota_timezone === undefined
+      ? {}
+      : { quota_timezone: projectString(record.quota_timezone) }),
+  }
 }
 
 export function projectAccessKeyOption(value: unknown): AccessKeyOptionDto {

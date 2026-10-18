@@ -168,6 +168,7 @@ export default {
           'Access keys currently blocked by an exhausted estimated-cost rule. This is a normal business state, not a service failure.',
         total: 'Total allowance',
         periodic: 'Every {period}',
+        calendarDay: 'Daily (calendar day)',
         periodDays: '{count} days',
         periodHours: '{count} hours',
         periodMinutes: '{count} minutes',

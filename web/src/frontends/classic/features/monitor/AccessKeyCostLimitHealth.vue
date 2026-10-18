@@ -20,6 +20,8 @@ function editLocation(accessKeyID: number) {
 
 function ruleLabel(rule: HealthAccessKeyCostLimitDto['blocking_rules'][number]): string {
   if (rule.kind === 'total') return t('monitor.health.accessKeyLimits.total')
+  if (rule.period_mode === 'calendar_day')
+    return t('monitor.health.accessKeyLimits.calendarDay') + ` · ${rule.timezone}`
   let period: string
   if (rule.period_seconds % 86_400 === 0) {
     period = t('monitor.health.accessKeyLimits.periodDays', {

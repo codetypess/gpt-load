@@ -73,12 +73,14 @@ const props = withDefaults(
     groups: GroupOptionDto[]
     channels: ChannelDto[]
     total: number
+    quotaTimezone?: string
     groupCatalogState?: GroupCatalogState
     createOperation?: PendingAccessKeyCreateOperation | null
     editOperation?: PendingAccessKeyEditOperation | null
   }>(),
   {
     copyFrom: null,
+    quotaTimezone: undefined,
     createOperation: null,
     editOperation: null,
     groupCatalogState: 'ready',
@@ -878,6 +880,7 @@ onBeforeUnmount(clearLocalState)
 
       <section class="drawer-section">
         <AccessKeyCostLimitEditor
+          :quota-timezone="quotaTimezone"
           :model-value="draft.costLimitRules"
           :runtime-status="base?.cost_limit_status ?? null"
           :disabled="formLocked"
