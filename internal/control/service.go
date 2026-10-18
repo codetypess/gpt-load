@@ -64,6 +64,7 @@ type Service struct {
 	mutations                         credentialMutationCoordinator
 	requestLogStats                   RequestLogStatsReader
 	accessQuota                       *accessquota.Runtime
+	accessKeyQuotaTimezone            string
 	modelDiscoveryTimeout             time.Duration
 	random                            io.Reader
 	operationRandom                   io.Reader
@@ -270,6 +271,7 @@ func NewService(
 	}
 	if cfg != nil {
 		service.environmentProxy = outboundproxy.Environment()
+		service.accessKeyQuotaTimezone = cfg.AccessKeyQuotaTimezone
 	}
 	if subscriptionCredentials != nil {
 		service.prepareSubscriptionCredential = subscriptionCredentials.PrepareForControl

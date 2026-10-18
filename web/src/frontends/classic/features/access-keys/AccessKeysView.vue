@@ -475,6 +475,7 @@ async function toggleStatus(accessKey: AccessKeyDto, enabled: boolean): Promise<
           :groups="groupsQuery.data.value ?? []"
           :channels="channelsQuery.data.value?.items ?? []"
           :total="data?.summary.total ?? 0"
+          :quota-timezone="data?.quota_timezone"
           :group-catalog-state="groupCatalogState"
           :create-operation="createOperation"
           :edit-operation="selected?.id === editOperation?.base.id ? editOperation : null"

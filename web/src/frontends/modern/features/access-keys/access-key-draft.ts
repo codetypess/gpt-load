@@ -1,12 +1,20 @@
 import { formatLocalDateTime, parseLocalDateTime } from '@modern/components/ui/date-time'
 import type { AccessInput, AccessKey, AccessScope, CostRule } from '@modern/api/access-keys'
 import { createOperationKey } from '../groups/group-create-operation'
+import {
+  calendarDaySeconds,
+  defaultQuotaTimezone,
+  isQuotaPeriodValid,
+  quotaPeriodFields,
+  quotaPeriodIdentity,
+} from '@shared/access-key-quota'
 
 export type ScopeDimension = 'groups' | 'protocols' | 'models'
 export interface RuleDraft extends CostRule {
   clientKey: string
   period: string
   unit: string
+  durationDraft?: { period: string; unit: string }
 }
 export interface AccessDraft {
   name: string
@@ -34,8 +42,8 @@ export function ruleDraft(rule: CostRule): RuleDraft {
   return {
     ...rule,
     clientKey: rule.id === undefined ? createOperationKey() : 'rule-' + rule.id,
-    period: String(seconds / periodUnits[unit]),
-    unit,
+    period: rule.period_mode === 'calendar_day' ? '1' : String(seconds / periodUnits[unit]),
+    unit: rule.period_mode === 'calendar_day' ? 'calendar_day' : unit,
   }
 }
 export function draftFor(row?: AccessKey, duplicate = false): AccessDraft {
@@ -81,6 +89,7 @@ export function normalizeDecimal(value: string): string {
   return normalized ? `${integer}.${normalized}` : integer
 }
 function periodSeconds(rule: RuleDraft): number {
+  if (rule.unit === 'calendar_day') return calendarDaySeconds
   const seconds = Number(rule.period) * periodUnits[rule.unit as keyof typeof periodUnits]
   // 小时小数换算可能产生浮点尾差，不改变已有规则的整秒时长。
   const rounded = Math.round(seconds)
@@ -106,7 +115,14 @@ export function inputFor(draft: AccessDraft): AccessInput {
       ...(rule.id !== undefined ? { id: rule.id } : {}),
       kind: rule.kind,
       limit_usd: normalizeDecimal(rule.limit_usd),
-      ...(rule.kind === 'periodic' ? { period_seconds: periodSeconds(rule) } : {}),
+      ...(rule.kind === 'periodic'
+        ? quotaPeriodFields({
+            period_seconds: periodSeconds(rule),
+            ...(rule.unit === 'calendar_day'
+              ? { period_mode: 'calendar_day', timezone: rule.timezone ?? defaultQuotaTimezone }
+              : {}),
+          })
+        : {}),
     })),
   }
 }
@@ -123,6 +139,7 @@ const ruleJSON = (rules: CostRule[]) =>
         kind: rule.kind,
         limit_usd: normalizeDecimal(rule.limit_usd),
         period_seconds: rule.kind === 'periodic' ? rule.period_seconds : 0,
+        ...(rule.period_mode ? { period_mode: rule.period_mode, timezone: rule.timezone } : {}),
       }))
       .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
   )
@@ -180,7 +197,7 @@ export function draftErrors(draft: AccessDraft, base?: AccessKey): Record<string
     (!input.filters.allowed_cidrs.length || input.filters.allowed_cidrs.length > 64)
   )
     errors.cidrs = 'invalidCIDR'
-  const periods = new Set<number>()
+  const periods = new Set<string>()
   let totals = 0
   let periodic = 0
   for (const rule of input.cost_limit_rules) {
@@ -189,15 +206,9 @@ export function draftErrors(draft: AccessDraft, base?: AccessKey): Record<string
     if (rule.kind === 'total') totals++
     else {
       periodic++
-      const seconds = rule.period_seconds!
-      if (
-        !Number.isSafeInteger(seconds) ||
-        seconds < 60 ||
-        seconds > 31536000 ||
-        periods.has(seconds)
-      )
-        errors.rules = 'invalidQuota'
-      periods.add(seconds)
+      const identity = quotaPeriodIdentity(rule)
+      if (!isQuotaPeriodValid(rule) || periods.has(identity)) errors.rules = 'invalidQuota'
+      periods.add(identity)
     }
   }
   if (totals > 1 || periodic > 10) errors.rules = 'invalidQuota'

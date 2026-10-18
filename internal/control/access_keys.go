@@ -63,10 +63,12 @@ func (value *OptionalNullableEpochMS) UnmarshalJSON(data []byte) error {
 }
 
 type AccessKeyCostLimitRuleRequest struct {
-	ID            uint             `json:"id,omitempty"`
-	Kind          accessquota.Kind `json:"kind"`
-	LimitUSD      string           `json:"limit_usd"`
-	PeriodSeconds int64            `json:"period_seconds,omitempty"`
+	ID            uint                   `json:"id,omitempty"`
+	Kind          accessquota.Kind       `json:"kind"`
+	LimitUSD      string                 `json:"limit_usd"`
+	PeriodSeconds int64                  `json:"period_seconds,omitempty"`
+	PeriodMode    accessquota.PeriodMode `json:"period_mode,omitempty"`
+	Timezone      string                 `json:"timezone,omitempty"`
 }
 
 type OptionalAccessKeyCostLimitRules struct {
@@ -97,10 +99,12 @@ func (value *OptionalAccessKeyCostLimitRules) UnmarshalJSON(data []byte) error {
 }
 
 type AccessKeyCostLimitRule struct {
-	ID            uint             `json:"id"`
-	Kind          accessquota.Kind `json:"kind"`
-	LimitUSD      string           `json:"limit_usd"`
-	PeriodSeconds int64            `json:"period_seconds,omitempty"`
+	ID            uint                   `json:"id"`
+	Kind          accessquota.Kind       `json:"kind"`
+	LimitUSD      string                 `json:"limit_usd"`
+	PeriodSeconds int64                  `json:"period_seconds,omitempty"`
+	PeriodMode    accessquota.PeriodMode `json:"period_mode,omitempty"`
+	Timezone      string                 `json:"timezone,omitempty"`
 }
 
 type AccessKeyCostLimitRuleStatus struct {
@@ -111,6 +115,8 @@ type AccessKeyCostLimitRuleStatus struct {
 	RemainingUSD      string                 `json:"remaining_usd"`
 	Status            accessquota.RuleStatus `json:"status"`
 	PeriodSeconds     int64                  `json:"period_seconds,omitempty"`
+	PeriodMode        accessquota.PeriodMode `json:"period_mode,omitempty"`
+	Timezone          string                 `json:"timezone,omitempty"`
 	WindowStartedAtMS *int64                 `json:"window_started_at_ms,omitempty"`
 	WindowEndsAtMS    *int64                 `json:"window_ends_at_ms,omitempty"`
 }
@@ -314,7 +320,7 @@ func (s *Service) CreateAccessKey(
 	if err != nil {
 		return AccessKeyCreateResult{}, err
 	}
-	costLimitRules, err := normalizeAccessKeyCostLimitRules(request.CostLimitRules, false)
+	costLimitRules, err := s.normalizeAccessKeyCostLimitRules(request.CostLimitRules, false)
 	if err != nil {
 		return AccessKeyCreateResult{}, err
 	}
@@ -432,7 +438,7 @@ func (s *Service) accessKeyUpdateMutation(
 	var desiredCostLimitRules []normalizedAccessKeyCostLimitRule
 	if request.CostLimitRules.Set {
 		var err error
-		desiredCostLimitRules, err = normalizeAccessKeyCostLimitRules(request.CostLimitRules, true)
+		desiredCostLimitRules, err = s.normalizeAccessKeyCostLimitRules(request.CostLimitRules, true)
 		if err != nil {
 			return nil, err
 		}

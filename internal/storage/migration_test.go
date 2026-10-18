@@ -47,6 +47,7 @@ func TestMigrationRegistryContainsOrderedMigrations(t *testing.T) {
 		migrationfiles.ID0032,
 		migrationfiles.ID0033,
 		migrationfiles.ID0034,
+		migrationfiles.ID0035,
 	}
 	if len(migrations) != len(wantIDs) {
 		t.Fatalf("migration registry length = %d, want %d", len(migrations), len(wantIDs))
@@ -178,7 +179,7 @@ func TestLegacyRequestLogMigrationsUpgradeWithoutRenumbering(t *testing.T) {
 					t.Fatalf("upgrade local migrations: %v", err)
 				}
 			}
-			if err := validateRequestLogProcessing0032(db); err != nil {
+			if err := migrationfiles.Validate0030(db); err != nil {
 				t.Fatalf("combined request body and processing schema: %v", err)
 			}
 			var ids []string

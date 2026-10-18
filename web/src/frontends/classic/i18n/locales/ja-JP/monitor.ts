@@ -168,6 +168,7 @@ export default {
           '概算費用ルールの上限到達により現在ブロックされているアクセスキーです。通常の業務状態であり、サービス障害ではありません。',
         total: '総額枠',
         periodic: '{period} ごと',
+        calendarDay: '毎日（暦日）',
         periodDays: '{count} 日',
         periodHours: '{count} 時間',
         periodMinutes: '{count} 分',

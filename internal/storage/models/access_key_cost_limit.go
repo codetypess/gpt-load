@@ -17,6 +17,8 @@ type AccessKeyCostLimitRule struct {
 	Kind          AccessKeyCostLimitKind `gorm:"type:varchar(16);not null;uniqueIndex:idx_access_key_cost_limit_rules_identity,priority:2;check:chk_ak_cost_rule_kind,kind IN ('total','periodic')"`
 	LimitNanoUSD  int64                  `gorm:"column:limit_nano_usd;not null;check:chk_ak_cost_rule_limit,limit_nano_usd > 0"`
 	PeriodSeconds int64                  `gorm:"not null;default:0;uniqueIndex:idx_access_key_cost_limit_rules_identity,priority:3;check:chk_ak_cost_rule_period,(kind = 'total' AND period_seconds = 0) OR (kind = 'periodic' AND period_seconds BETWEEN 60 AND 31536000)"`
+	PeriodMode    string                 `gorm:"type:varchar(16);not null;default:'';uniqueIndex:idx_access_key_cost_limit_rules_identity,priority:4"`
+	Timezone      string                 `gorm:"type:varchar(64);not null;default:'';check:chk_ak_cost_rule_period_mode,(period_mode = '' AND timezone = '') OR (kind = 'periodic' AND period_mode = 'calendar_day' AND period_seconds = 86400 AND timezone <> '')"`
 	RuleRevision  uint64                 `gorm:"not null;default:1;check:chk_ak_cost_rule_revision,rule_revision > 0"`
 	AccessKey     *AccessKey             `gorm:"foreignKey:AccessKeyID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	CreatedAtMS   int64                  `gorm:"column:created_at_ms;not null;autoCreateTime:milli;check:chk_ak_cost_rule_created_at,created_at_ms >= 0"`

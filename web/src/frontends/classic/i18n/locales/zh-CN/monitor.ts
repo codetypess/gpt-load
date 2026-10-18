@@ -164,6 +164,7 @@ export default {
           '当前因任一估算费用规则用尽而被阻断的访问密钥；这是正常业务状态，不代表服务异常。',
         total: '总额度',
         periodic: '每 {period}',
+        calendarDay: '每天（自然日）',
         periodDays: '{count} 天',
         periodHours: '{count} 小时',
         periodMinutes: '{count} 分钟',

@@ -121,7 +121,9 @@ const quotas = computed(
                 const label =
                   rule.kind === 'total'
                     ? t('accessKeys.distribution.totalQuota')
-                    : t('accessKeys.distribution.periodic', { hours: rule.period_seconds / 3600 })
+                    : rule.period_mode === 'calendar_day'
+                      ? t('accessKeys.reset.calendarDay') + ` · ${rule.timezone}`
+                      : t('accessKeys.distribution.periodic', { hours: rule.period_seconds / 3600 })
                 return `${label} · ${t('accessKeys.distribution.remaining', { amount: formatUSD(rule.remaining_usd, locale.value) })}`
               })
               .join('\n')

@@ -319,7 +319,7 @@ func queryCompileRows(ctx context.Context, db *gorm.DB) (compileRows, error) {
 		return compileRows{}, fmt.Errorf("query access keys: %w", err)
 	}
 	if err := db.
-		Select("id", "access_key_id", "kind", "limit_nano_usd", "period_seconds", "rule_revision").
+		Select("id", "access_key_id", "kind", "limit_nano_usd", "period_seconds", "period_mode", "timezone", "rule_revision").
 		Order("access_key_id ASC, id ASC").
 		Find(&rows.costLimitRules).Error; err != nil {
 		return compileRows{}, fmt.Errorf("query access key cost limit rules: %w", err)
@@ -846,6 +846,7 @@ func mapAccessKeys(
 		rulesByAccessKey[row.AccessKeyID] = append(rulesByAccessKey[row.AccessKeyID], accessquota.Rule{
 			ID: row.ID, Revision: row.RuleRevision, Kind: accessquota.Kind(row.Kind),
 			LimitNanoUSD: row.LimitNanoUSD, PeriodSeconds: row.PeriodSeconds,
+			PeriodMode: accessquota.PeriodMode(row.PeriodMode), Timezone: row.Timezone,
 		})
 	}
 	result := make([]state.AccessKeyConfig, 0, len(rows))

@@ -18,6 +18,8 @@ type normalizedAccessKeyCostLimitRule struct {
 	Kind          accessquota.Kind
 	LimitNanoUSD  int64
 	PeriodSeconds int64
+	PeriodMode    accessquota.PeriodMode
+	Timezone      string
 }
 
 type accessKeyCostLimitPeriodMove struct {
@@ -25,7 +27,7 @@ type accessKeyCostLimitPeriodMove struct {
 	TemporaryPeriod int64
 }
 
-func normalizeAccessKeyCostLimitRules(
+func (s *Service) normalizeAccessKeyCostLimitRules(
 	field OptionalAccessKeyCostLimitRules,
 	allowExistingIDs bool,
 ) ([]normalizedAccessKeyCostLimitRule, error) {
@@ -34,7 +36,10 @@ func normalizeAccessKeyCostLimitRules(
 	}
 	result := make([]normalizedAccessKeyCostLimitRule, 0, len(field.Values))
 	totalCount := 0
-	periods := make(map[int64]struct{})
+	periods := make(map[struct {
+		seconds int64
+		mode    accessquota.PeriodMode
+	}]struct{})
 	ids := make(map[uint]struct{})
 	for _, input := range field.Values {
 		if input.ID != 0 && !allowExistingIDs {
@@ -53,6 +58,14 @@ func normalizeAccessKeyCostLimitRules(
 		rule := normalizedAccessKeyCostLimitRule{
 			ID: input.ID, Kind: input.Kind, LimitNanoUSD: int64(parsed),
 			PeriodSeconds: input.PeriodSeconds,
+			PeriodMode:    input.PeriodMode, Timezone: input.Timezone,
+		}
+		if rule.PeriodMode == accessquota.PeriodModeCalendarDay && rule.Timezone == "" {
+			rule.Timezone = s.quotaTimezone()
+		}
+		if err := (accessquota.Rule{Kind: rule.Kind, PeriodSeconds: rule.PeriodSeconds,
+			PeriodMode: rule.PeriodMode, Timezone: rule.Timezone}).ValidatePeriod(); err != nil {
+			return nil, app_errors.ErrValidation
 		}
 		switch rule.Kind {
 		case accessquota.KindTotal:
@@ -65,10 +78,14 @@ func normalizeAccessKeyCostLimitRules(
 				rule.PeriodSeconds > accessquota.MaxPeriodSeconds {
 				return nil, app_errors.ErrValidation
 			}
-			if _, duplicate := periods[rule.PeriodSeconds]; duplicate {
+			identity := struct {
+				seconds int64
+				mode    accessquota.PeriodMode
+			}{rule.PeriodSeconds, rule.PeriodMode}
+			if _, duplicate := periods[identity]; duplicate {
 				return nil, app_errors.ErrValidation
 			}
-			periods[rule.PeriodSeconds] = struct{}{}
+			periods[identity] = struct{}{}
 		default:
 			return nil, app_errors.ErrValidation
 		}
@@ -90,6 +107,9 @@ func sortNormalizedAccessKeyCostLimitRules(rules []normalizedAccessKeyCostLimitR
 		if left.PeriodSeconds != right.PeriodSeconds {
 			return left.PeriodSeconds < right.PeriodSeconds
 		}
+		if left.PeriodMode != right.PeriodMode {
+			return left.PeriodMode < right.PeriodMode
+		}
 		return left.ID < right.ID
 	})
 }
@@ -107,6 +127,7 @@ func createAccessKeyCostLimitRules(
 		rule := models.AccessKeyCostLimitRule{
 			AccessKeyID: accessKeyID, Kind: models.AccessKeyCostLimitKind(definition.Kind),
 			LimitNanoUSD: definition.LimitNanoUSD, PeriodSeconds: definition.PeriodSeconds,
+			PeriodMode: string(definition.PeriodMode), Timezone: definition.Timezone,
 			RuleRevision: 1,
 		}
 		if err := tx.Create(&rule).Error; err != nil {
@@ -162,7 +183,7 @@ func reconcileAccessKeyCostLimitRules(
 	for _, move := range periodMoves {
 		result := tx.Model(&models.AccessKeyCostLimitRule{}).
 			Where("id = ? AND access_key_id = ?", move.RuleID, accessKeyID).
-			Update("period_seconds", move.TemporaryPeriod)
+			Updates(map[string]any{"period_seconds": move.TemporaryPeriod, "period_mode": "", "timezone": ""})
 		if result.Error != nil {
 			return nil, app_errors.ParseDBError(result.Error)
 		}
@@ -185,7 +206,8 @@ func reconcileAccessKeyCostLimitRules(
 			continue
 		}
 		currentRule := currentByID[definition.ID]
-		semanticsChanged := currentRule.PeriodSeconds != definition.PeriodSeconds
+		semanticsChanged := currentRule.PeriodSeconds != definition.PeriodSeconds ||
+			currentRule.PeriodMode != string(definition.PeriodMode) || currentRule.Timezone != definition.Timezone
 		updates := map[string]any{"limit_nano_usd": definition.LimitNanoUSD}
 		if semanticsChanged {
 			if currentRule.RuleRevision == ^uint64(0) {
@@ -193,6 +215,8 @@ func reconcileAccessKeyCostLimitRules(
 			}
 			updates["kind"] = string(definition.Kind)
 			updates["period_seconds"] = definition.PeriodSeconds
+			updates["period_mode"] = string(definition.PeriodMode)
+			updates["timezone"] = definition.Timezone
 			updates["rule_revision"] = currentRule.RuleRevision + 1
 		}
 		if err := tx.Model(&models.AccessKeyCostLimitRule{}).
@@ -324,7 +348,8 @@ func planAccessKeyCostLimitPeriodMoves(
 			continue
 		}
 		currentRule := currentByID[definition.ID]
-		if currentRule.PeriodSeconds == definition.PeriodSeconds {
+		if currentRule.PeriodSeconds == definition.PeriodSeconds &&
+			currentRule.PeriodMode == string(definition.PeriodMode) && currentRule.Timezone == definition.Timezone {
 			continue
 		}
 		if currentRule.RuleRevision == ^uint64(0) {
@@ -367,7 +392,7 @@ func loadAccessKeyCostLimitRuleRows(
 ) ([]models.AccessKeyCostLimitRule, error) {
 	var rows []models.AccessKeyCostLimitRule
 	if err := db.Where("access_key_id = ?", accessKeyID).
-		Order("CASE WHEN kind = 'total' THEN 0 ELSE 1 END ASC, period_seconds ASC, id ASC").
+		Order("CASE WHEN kind = 'total' THEN 0 ELSE 1 END ASC, period_seconds ASC, period_mode ASC, id ASC").
 		Find(&rows).Error; err != nil {
 		return nil, app_errors.ParseDBError(err)
 	}
@@ -381,6 +406,7 @@ func mapAccessKeyCostLimitRules(rows []models.AccessKeyCostLimitRule) []AccessKe
 			ID: row.ID, Kind: accessquota.Kind(row.Kind),
 			LimitUSD:      pricing.FormatUSD(pricing.NanoUSD(row.LimitNanoUSD)),
 			PeriodSeconds: row.PeriodSeconds,
+			PeriodMode:    accessquota.PeriodMode(row.PeriodMode), Timezone: row.Timezone,
 		})
 	}
 	return result
@@ -394,6 +420,7 @@ func costLimitRuleRequestsForDigest(
 		result = append(result, AccessKeyCostLimitRuleRequest{
 			Kind: rule.Kind, LimitUSD: pricing.FormatUSD(pricing.NanoUSD(rule.LimitNanoUSD)),
 			PeriodSeconds: rule.PeriodSeconds,
+			PeriodMode:    rule.PeriodMode, Timezone: rule.Timezone,
 		})
 	}
 	return result
@@ -414,6 +441,7 @@ func mapAccessKeyCostLimitStatus(view accessquota.View) AccessKeyCostLimitStatus
 			UsedUSD:      pricing.FormatUSD(pricing.NanoUSD(rule.UsedNanoUSD)),
 			RemainingUSD: pricing.FormatUSD(pricing.NanoUSD(rule.RemainingNanoUSD)),
 			Status:       rule.Status, PeriodSeconds: rule.PeriodSeconds,
+			PeriodMode: rule.PeriodMode, Timezone: rule.Timezone,
 			WindowStartedAtMS: cloneCostLimitMilliseconds(rule.WindowStartedAtMS),
 			WindowEndsAtMS:    cloneCostLimitMilliseconds(rule.WindowEndsAtMS),
 		})
@@ -427,9 +455,17 @@ func costLimitDefinitionsFromStatus(status AccessKeyCostLimitStatus) []AccessKey
 		rules = append(rules, AccessKeyCostLimitRule{
 			ID: rule.ID, Kind: rule.Kind, LimitUSD: rule.LimitUSD,
 			PeriodSeconds: rule.PeriodSeconds,
+			PeriodMode:    rule.PeriodMode, Timezone: rule.Timezone,
 		})
 	}
 	return rules
+}
+
+func (s *Service) quotaTimezone() string {
+	if s.accessKeyQuotaTimezone != "" {
+		return s.accessKeyQuotaTimezone
+	}
+	return accessquota.DefaultTimezone
 }
 
 func blockingCostLimitRuleStatuses(status AccessKeyCostLimitStatus) []AccessKeyCostLimitRuleStatus {

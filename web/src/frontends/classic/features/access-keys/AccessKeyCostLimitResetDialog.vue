@@ -37,6 +37,8 @@ function periodLabel(seconds: number): string {
 }
 
 function ruleLabel(rule: AccessKeyCostLimitRuleDto): string {
+  if (rule.period_mode === 'calendar_day')
+    return t('accessKeys.reset.calendarDay') + ` · ${rule.timezone}`
   return rule.kind === 'total'
     ? t('accessKeys.reset.total')
     : t('accessKeys.reset.periodic', { period: periodLabel(rule.period_seconds) })

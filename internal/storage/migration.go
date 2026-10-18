@@ -133,19 +133,24 @@ var migrations = []migration{
 	{ID: migrationfiles.ID0030, Legacy: map[string]func(*gorm.DB) error{"0030_request_log_processing": migrationfiles.Validate0032}, Up: migrationfiles.Up0030, Validate: migrationfiles.Validate0030, ValidateRecoverable: migrationfiles.ValidateRecoverable0030},
 	{ID: migrationfiles.ID0031, Legacy: map[string]func(*gorm.DB) error{"0031_request_log_processing": migrationfiles.Validate0032, "0031_usage_model_speed_stats": migrationfiles.Validate0033}, Up: migrationfiles.Up0031, Validate: migrationfiles.Validate0031, ValidateRecoverable: migrationfiles.ValidateRecoverable0031},
 	{ID: migrationfiles.ID0032, Legacy: map[string]func(*gorm.DB) error{"0032_usage_model_speed_stats": migrationfiles.Validate0033, "0032_nexustoken_sessions": migrationfiles.Validate0034}, Up: migrationfiles.Up0032, Validate: migrationfiles.Validate0032, ValidateRecoverable: migrationfiles.ValidateRecoverable0032},
-	{ID: migrationfiles.ID0033, Legacy: map[string]func(*gorm.DB) error{"0033_nexustoken_sessions": migrationfiles.Validate0034}, Up: migrationfiles.Up0033, Validate: migrationfiles.Validate0033, ValidateRecoverable: migrationfiles.ValidateRecoverable0033},
-	{ID: migrationfiles.ID0034, Up: migrationfiles.Up0034, Validate: migrationfiles.Validate0034, ValidateRecoverable: migrationfiles.ValidateRecoverable0034},
+	{ID: migrationfiles.ID0033, Legacy: map[string]func(*gorm.DB) error{"0033_nexustoken_sessions": migrationfiles.Validate0034}, Up: upUsageModelSpeedStats0033, Validate: migrationfiles.Validate0033, ValidateRecoverable: migrationfiles.ValidateRecoverable0033},
+	{ID: migrationfiles.ID0034, Legacy: map[string]func(*gorm.DB) error{"0034_access_key_calendar_day": migrationfiles.Validate0035}, Up: migrationfiles.Up0034, Validate: migrationfiles.Validate0034, ValidateRecoverable: migrationfiles.ValidateRecoverable0034},
+	{ID: migrationfiles.ID0035, Up: migrationfiles.Up0035, Validate: migrationfiles.Validate0035, ValidateRecoverable: migrationfiles.ValidateRecoverable0035},
 }
 
-func validateRequestLogProcessing0032(db *gorm.DB) error {
-	if err := migrationfiles.Validate0030(db); err != nil {
+func upUsageModelSpeedStats0033(db *gorm.DB) error {
+	// Completed local speed migrations already contain historical aggregates
+	// whose request logs may have expired. Preserve those aggregates.
+	var count int64
+	if err := db.Table(migrationLedgerTable).Where("id IN ?", []string{
+		"0031_usage_model_speed_stats", "0032_usage_model_speed_stats",
+	}).Count(&count).Error; err != nil {
 		return err
 	}
-	if err := migrationfiles.Validate0031(db); err != nil {
-		return err
+	if count > 0 {
+		return migrationfiles.Validate0033(db)
 	}
-	return migrationfiles.Validate0032(db)
-
+	return migrationfiles.Up0033(db)
 }
 
 func applyMigrations(db *gorm.DB) error {

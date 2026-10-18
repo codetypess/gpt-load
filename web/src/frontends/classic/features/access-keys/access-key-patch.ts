@@ -5,6 +5,11 @@ import type {
 } from '@/app/resources/access-keys'
 import type { AccessKeyDto, AccessKeyFiltersDto } from '@/api/control/types'
 import { createUUID } from '@/lib/uuid'
+import {
+  isQuotaPeriodValid,
+  quotaPeriodFields,
+  quotaPeriodIdentity,
+} from '@shared/access-key-quota'
 import { isValidPriceMultiplier, normalizePriceMultiplier } from '@/lib/price-multiplier'
 
 import {
@@ -33,6 +38,7 @@ export interface AccessKeyDraft {
 
 export interface AccessKeyCostLimitRuleDraft extends AccessKeyCostLimitRuleInput {
   clientKey: string
+  durationDraft?: { seconds: number; unit: 'seconds' | 'minutes' | 'hours' | 'days' }
 }
 
 function costLimitRuleDraft(rule: AccessKeyCostLimitRuleInput): AccessKeyCostLimitRuleDraft {
@@ -210,12 +216,13 @@ function canonicalCostLimitRules(
       ...(rule.id === undefined ? {} : { id: rule.id }),
       kind: rule.kind,
       limit_usd: rule.limit_usd,
-      ...(rule.kind === 'periodic' ? { period_seconds: rule.period_seconds } : {}),
+      ...(rule.kind === 'periodic' ? quotaPeriodFields(rule) : {}),
     }))
     .sort((left, right) => {
       if (left.kind !== right.kind) return left.kind === 'total' ? -1 : 1
       return (
         (left.period_seconds ?? 0) - (right.period_seconds ?? 0) ||
+        (left.period_mode ?? '').localeCompare(right.period_mode ?? '') ||
         (left.id ?? Number.MAX_SAFE_INTEGER) - (right.id ?? Number.MAX_SAFE_INTEGER) ||
         left.limit_usd.localeCompare(right.limit_usd)
       )
@@ -240,7 +247,7 @@ function costLimitInputs(
       ...(includeIDs && rule.id !== undefined ? { id: rule.id } : {}),
       kind: rule.kind,
       limit_usd: rule.limit_usd,
-      ...(rule.kind === 'periodic' ? { period_seconds: rule.period_seconds } : {}),
+      ...(rule.kind === 'periodic' ? quotaPeriodFields(rule) : {}),
     })),
   )
 }
@@ -250,7 +257,7 @@ export function areAccessKeyCostLimitRulesValid(
 ): boolean {
   let totalCount = 0
   let periodicCount = 0
-  const periods = new Set<number>()
+  const periods = new Set<string>()
   const ids = new Set<number>()
   for (const rule of rules) {
     if (!/^(?:0|[1-9]\d*)(?:\.\d{1,9})?$/.test(rule.limit_usd)) return false
@@ -262,20 +269,15 @@ export function areAccessKeyCostLimitRulesValid(
     if (rule.kind === 'total') {
       totalCount += 1
       if (rule.period_seconds !== undefined && rule.period_seconds !== 0) return false
+      if (rule.period_mode || rule.timezone) return false
       continue
     }
     periodicCount += 1
-    const period = rule.period_seconds
-    if (
-      period === undefined ||
-      !Number.isSafeInteger(period) ||
-      period < 60 ||
-      period > 31_536_000 ||
-      periods.has(period)
-    ) {
+    const identity = quotaPeriodIdentity(rule)
+    if (!isQuotaPeriodValid(rule) || periods.has(identity)) {
       return false
     }
-    periods.add(period)
+    periods.add(identity)
   }
   return totalCount <= 1 && periodicCount <= 10
 }
@@ -350,6 +352,8 @@ function sameCostLimitRuleValue(
   return (
     left.kind === right.kind &&
     (left.period_seconds ?? 0) === (right.period_seconds ?? 0) &&
+    (left.period_mode ?? '') === (right.period_mode ?? '') &&
+    (left.timezone ?? '') === (right.timezone ?? '') &&
     normalizedUSD(left.limit_usd) === normalizedUSD(right.limit_usd)
   )
 }
