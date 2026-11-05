@@ -1,7 +1,9 @@
 package nexustoken
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +11,16 @@ import (
 	"testing"
 	"time"
 )
+
+func TestClientReportsRequestTimeout(t *testing.T) {
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+	err := (Client{BaseURL: "https://example.invalid"}).Request(ctx, http.MethodGet, "/carpool/my/assets", "", nil, nil)
+	var upstream *Error
+	if !errors.As(err, &upstream) || upstream.Code != "request_timeout" {
+		t.Fatalf("error = %v, want request_timeout", err)
+	}
+}
 
 func TestSnapshotKeepsPersonalVehicleAndResetCardData(t *testing.T) {
 	now := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)

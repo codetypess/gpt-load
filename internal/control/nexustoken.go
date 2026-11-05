@@ -60,8 +60,14 @@ func (server *Server) handleNexusTokenLogin(c *gin.Context) {
 	response.SuccessI18n(c, "common.success", result)
 }
 
-func nexusTokenAPIError(code string, status int) error {
-	return &app_errors.APIError{HTTPStatus: status, Code: "NEXUSTOKEN_" + code, Message: "NexusToken account connection failed"}
+func nexusTokenAPIError(code string, status int, cause error) error {
+	result := &app_errors.APIError{HTTPStatus: status, Code: "NEXUSTOKEN_" + code, Message: "NexusToken account connection failed"}
+	var upstream *nexustoken.Error
+	if errors.As(cause, &upstream) {
+		// Only controlled diagnostics are returned; upstream bodies can contain secrets.
+		result.Data = map[string]any{"reason": upstream.Code, "upstream_status": upstream.Status}
+	}
+	return result
 }
 
 func (s *Service) loginNexusToken(ctx context.Context, request nexusTokenLoginRequest) (nexusTokenLoginResult, error) {
@@ -102,22 +108,27 @@ func (s *Service) loginNexusToken(ctx context.Context, request nexusTokenLoginRe
 	client := nexustoken.Client{BaseURL: baseURL, HTTP: httpClient}
 	tokens, err := client.Login(ctx, strings.TrimSpace(request.Email), request.Password, request.TempToken, request.TOTPCode)
 	if err != nil {
-		return result, nexusTokenAPIError("LOGIN_FAILED", http.StatusBadRequest)
+		status := http.StatusBadGateway
+		var upstream *nexustoken.Error
+		if errors.As(err, &upstream) && upstream.Status >= 400 && upstream.Status < 500 {
+			status = http.StatusBadRequest
+		}
+		return result, nexusTokenAPIError("LOGIN_FAILED", status, err)
 	}
 	if tokens.TempToken != "" && tokens.AccessToken == "" {
 		result.TempToken = tokens.TempToken
 		return result, nil
 	}
 	if tokens.User.ID <= 0 || tokens.User.Email == "" {
-		return result, nexusTokenAPIError("INVALID_RESPONSE", http.StatusBadGateway)
+		return result, nexusTokenAPIError("INVALID_RESPONSE", http.StatusBadGateway, nil)
 	}
 	assets, err := client.Assets(ctx, tokens.AccessToken)
 	if err != nil {
-		return result, nexusTokenAPIError("ASSETS_FAILED", http.StatusBadGateway)
+		return result, nexusTokenAPIError("ASSETS_FAILED", http.StatusBadGateway, err)
 	}
 	var bindings []nexustoken.Binding
 	if err := client.Request(ctx, http.MethodGet, "/carpool/my/api-key-bindings", tokens.AccessToken, nil, &bindings); err != nil {
-		return result, nexusTokenAPIError("BINDINGS_FAILED", http.StatusBadGateway)
+		return result, nexusTokenAPIError("BINDINGS_FAILED", http.StatusBadGateway, err)
 	}
 	s.nexusTokenMu.Lock()
 	defer s.nexusTokenMu.Unlock()
@@ -176,7 +187,7 @@ func (s *Service) loginNexusToken(ctx context.Context, request nexusTokenLoginRe
 			Key   string `json:"key"`
 		}
 		if err := client.Request(ctx, http.MethodGet, fmt.Sprintf("/keys/%d", binding.APIKey.ID), tokens.AccessToken, nil, &key); err != nil {
-			return result, nexusTokenAPIError("KEYS_FAILED", http.StatusBadGateway)
+			return result, nexusTokenAPIError("KEYS_FAILED", http.StatusBadGateway, err)
 		}
 		if key.ID != binding.APIKey.ID || key.Scope != "carpool" || strings.TrimSpace(key.Key) == "" {
 			continue

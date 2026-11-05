@@ -10,10 +10,82 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/outboundproxy"
+	"gpt-load/internal/platform/config"
 	"gpt-load/internal/storage/models"
 )
+
+func TestNexusTokenLoginHTTPReportsFailureStageWithoutSecrets(t *testing.T) {
+	initControlI18n(t)
+	for _, test := range []struct {
+		name, path, body, code, reason string
+		upstreamStatus, status         int
+	}{
+		{"login rejected", "/auth/login", `password=secret token=private`, "LOGIN_FAILED", "upstream_rejected", 401, 400},
+		{"login unavailable", "/auth/login", `password=secret token=private`, "LOGIN_FAILED", "upstream_rejected", 503, 502},
+		{"assets unauthorized after login", "/carpool/my/assets", `token=private`, "ASSETS_FAILED", "upstream_rejected", 401, 502},
+		{"bindings incompatible after login", "/carpool/my/api-key-bindings", `<html>token=private</html>`, "BINDINGS_FAILED", "invalid_response", 200, 502},
+		{"key unavailable after login", "/keys/33", `token=private`, "KEYS_FAILED", "upstream_rejected", 404, 502},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newServiceFixture(t)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				path := strings.TrimPrefix(r.URL.Path, "/api/v1")
+				if path == test.path {
+					w.WriteHeader(test.upstreamStatus)
+					fmt.Fprint(w, test.body)
+					return
+				}
+				switch path {
+				case "/auth/login":
+					fmt.Fprint(w, `{"code":0,"data":{"access_token":"private","user":{"id":12,"email":"driver@example.com"}}}`)
+				case "/carpool/my/assets":
+					fmt.Fprint(w, `{"code":0,"data":[{"round_id":7,"active_seat_ids":[9],"status":"active"}]}`)
+				case "/carpool/my/api-key-bindings":
+					fmt.Fprint(w, `{"code":0,"data":[{"api_key":{"id":33},"seat_id":9}]}`)
+				default:
+					t.Errorf("unexpected upstream request: %s", path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer upstream.Close()
+			body, err := json.Marshal(nexusTokenLoginRequest{
+				BaseURL: upstream.URL, Email: "driver@example.com", Password: "secret",
+				Proxy: &outboundproxy.Config{Mode: outboundproxy.ModeDirect},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			server := NewServer(&config.Config{}, fixture.service)
+			router := gin.New()
+			router.POST("/api/nexustoken/login", server.handleNexusTokenLogin)
+			request := httptest.NewRequest(http.MethodPost, "/api/nexustoken/login", strings.NewReader(string(body)))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, request)
+			var result struct {
+				Code string `json:"code"`
+				Data struct {
+					Reason         string `json:"reason"`
+					UpstreamStatus int    `json:"upstream_status"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if recorder.Code != test.status || result.Code != "NEXUSTOKEN_"+test.code || result.Data.Reason != test.reason || result.Data.UpstreamStatus != test.upstreamStatus {
+				t.Fatalf("response = %d %s", recorder.Code, recorder.Body)
+			}
+			for _, secret := range []string{"secret", "private"} {
+				if strings.Contains(recorder.Body.String(), secret) {
+					t.Fatal("upstream secret leaked into error response")
+				}
+			}
+		})
+	}
+}
 
 func TestNexusTokenLoginImportRefreshAndFailurePreserveInference(t *testing.T) {
 	fixture := newServiceFixture(t)

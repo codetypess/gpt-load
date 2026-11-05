@@ -2,6 +2,7 @@
 import { computed, onScopeDispose, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiClient } from '@shared/http/client-context'
+import { ApiError } from '@shared/http/errors'
 
 const props = defineProps<{
   modelValue: string
@@ -31,6 +32,15 @@ const words = computed(() => {
       keyHelp: '每行一个 API Key。仅导入 Key 时，无法读取需要登录的拼车额度。',
       empty: '该账户没有已绑定有效拼车的 Key，请先在网站绑定后重新读取。',
       failed: '连接失败，请检查网站地址、账号密码或验证码。',
+      loginFailed: '网站登录失败，请检查账号密码或验证码。',
+      invalidResponse: '网站登录返回的账户信息不完整，请稍后重试。',
+      assetsFailed: '登录成功，但读取拼车资产失败，请稍后重试。',
+      bindingsFailed: '登录成功，但读取拼车 Key 绑定失败，请稍后重试。',
+      keysFailed: '登录成功，但读取 API Key 明文失败，请稍后重试。',
+      upstreamRejected: '网站返回 HTTP',
+      requestFailed: '无法连接网站，请检查网站地址及代理设置。',
+      requestTimeout: '网站请求超时，请检查网络或稍后重试。',
+      responseChanged: '网站返回的数据格式不兼容。',
       selected: '选择要导入的拼车 Key',
       count: '已准备的 Key 数量',
     }
@@ -49,6 +59,16 @@ const words = computed(() => {
         'API Key を1行に1つ入力します。Key のみではログインが必要な共有枠情報を取得できません。',
       empty: '有効な共有枠に紐づく Key がありません。サイトで紐づけてから再試行してください。',
       failed: '接続に失敗しました。URL、ログイン情報、認証コードを確認してください。',
+      loginFailed: 'サイトへのログインに失敗しました。ログイン情報と認証コードを確認してください。',
+      invalidResponse: 'ログインで返されたアカウント情報が不完全です。再試行してください。',
+      assetsFailed: 'ログインに成功しましたが、共有枠の取得に失敗しました。再試行してください。',
+      bindingsFailed:
+        'ログインに成功しましたが、Key の紐付けの取得に失敗しました。再試行してください。',
+      keysFailed: 'ログインに成功しましたが、API Key の取得に失敗しました。再試行してください。',
+      upstreamRejected: 'サイトの HTTP ステータス:',
+      requestFailed: 'サイトに接続できません。URL とプロキシ設定を確認してください。',
+      requestTimeout: 'サイトへのリクエストがタイムアウトしました。再試行してください。',
+      responseChanged: 'サイトの応答形式に互換性がありません。',
       selected: 'インポートする Key',
       count: '準備済み Key 数',
     }
@@ -66,6 +86,15 @@ const words = computed(() => {
       'One API key per line. Keys alone cannot access carpool information that requires account login.',
     empty: 'No keys are bound to an active carpool. Bind a key on the website and load again.',
     failed: 'Connection failed. Check the website URL, credentials, or verification code.',
+    loginFailed: 'Website login failed. Check your credentials or verification code.',
+    invalidResponse: 'Website login returned incomplete account information. Please try again.',
+    assetsFailed: 'Signed in, but loading carpool assets failed. Please try again.',
+    bindingsFailed: 'Signed in, but loading carpool key bindings failed. Please try again.',
+    keysFailed: 'Signed in, but reading the API key failed. Please try again.',
+    upstreamRejected: 'Website returned HTTP',
+    requestFailed: 'Cannot connect to the website. Check its URL and your proxy settings.',
+    requestTimeout: 'The website request timed out. Check your network or try again later.',
+    responseChanged: 'The website returned an incompatible response format.',
     selected: 'Select carpool keys to import',
     count: 'Keys ready',
   }
@@ -129,6 +158,28 @@ function choose(choice: Choice, checked: boolean): void {
       .join('\n'),
   )
 }
+function loginError(cause: unknown): string {
+  if (!(cause instanceof ApiError)) return words.value.failed
+  const stages: Record<string, string> = {
+    NEXUSTOKEN_LOGIN_FAILED: words.value.loginFailed,
+    NEXUSTOKEN_INVALID_RESPONSE: words.value.invalidResponse,
+    NEXUSTOKEN_ASSETS_FAILED: words.value.assetsFailed,
+    NEXUSTOKEN_BINDINGS_FAILED: words.value.bindingsFailed,
+    NEXUSTOKEN_KEYS_FAILED: words.value.keysFailed,
+  }
+  const stage = stages[cause.code]
+  if (!stage) return words.value.failed
+  const details = cause.data
+  if (typeof details !== 'object' || details === null) return stage
+  const reason = 'reason' in details ? details.reason : undefined
+  const status = 'upstream_status' in details ? details.upstream_status : undefined
+  if (reason === 'request_timeout') return `${stage} ${words.value.requestTimeout}`
+  if (reason === 'request_failed') return `${stage} ${words.value.requestFailed}`
+  if (reason === 'invalid_response') return `${stage} ${words.value.responseChanged}`
+  if (typeof status === 'number' && Number.isInteger(status) && status >= 300 && status <= 599)
+    return `${stage} ${words.value.upstreamRejected} ${status}`
+  return stage
+}
 async function login(): Promise<void> {
   if (busy.value || props.disabled || props.entryDisabled || !props.baseUrl.trim()) return
   const current = ++revision
@@ -170,8 +221,8 @@ async function login(): Promise<void> {
     selected.value = new Set(result.choices.map((item) => item.id))
     emit('update:modelValue', result.choices.map((item) => item.credential).join('\n'))
     loaded.value = true
-  } catch {
-    if (current === revision) error.value = words.value.failed
+  } catch (cause) {
+    if (current === revision) error.value = loginError(cause)
   } finally {
     if (current === revision) {
       busy.value = false

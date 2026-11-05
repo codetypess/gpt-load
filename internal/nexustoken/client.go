@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -112,6 +113,10 @@ func (c Client) Request(ctx context.Context, method, path, token string, input, 
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	response, err := client.Do(req)
 	if err != nil {
+		var timeout interface{ Timeout() bool }
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout()) {
+			return &Error{Code: "request_timeout"}
+		}
 		return &Error{Code: "request_failed"}
 	}
 	defer response.Body.Close()
@@ -123,10 +128,10 @@ func (c Client) Request(ctx context.Context, method, path, token string, input, 
 		Data json.RawMessage `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, (4<<20)+1)).Decode(&envelope); err != nil || envelope.Code == nil || *envelope.Code != 0 || len(envelope.Data) == 0 {
-		return &Error{Code: "invalid_response"}
+		return &Error{Status: response.StatusCode, Code: "invalid_response"}
 	}
 	if output != nil && json.Unmarshal(envelope.Data, output) != nil {
-		return &Error{Code: "invalid_response"}
+		return &Error{Status: response.StatusCode, Code: "invalid_response"}
 	}
 	return nil
 }
