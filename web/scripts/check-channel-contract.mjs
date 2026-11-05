@@ -171,7 +171,7 @@ try {
     assert.deepEqual(classicRows, modernRows)
     assert.deepEqual(
       classicRows.map((row) => row.label),
-      ['$0.00 · 7%', '7%', '$68.80 · 7%', '$256.44 · 7%'],
+      ['$0 · 7%', '7%', '$68.8/$982.86 · 7%', '$256.44/$3,663.43 · 7%'],
     )
     assert(classicRows.every((row) => row.progress === 7))
   }
@@ -179,7 +179,7 @@ try {
     { scope: 'personal', unit: 'percent', used: 137.5, utilization: 1, usedCostUSD: 1001 },
     'zh-CN',
   )
-  assert.equal(overLimit.label, '$1,001.00 · 137.5%')
+  assert.equal(overLimit.label, '$1,001/$728 · 137.5%')
   assert.equal(overLimit.progress, 100)
   assert.equal(
     presentCarpoolQuota({ scope: 'account', unit: 'percent', used: 7 }, 'zh-CN'),
