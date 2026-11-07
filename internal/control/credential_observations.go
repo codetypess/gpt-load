@@ -249,17 +249,6 @@ func (s *Service) refreshCredentialObservationOnce(
 		return CredentialObservationResponse{}, err
 	}
 	ctx = subscriptionruntime.WithNetworkContext(ctx, network)
-	if group.ChannelID == string(channel.NexusToken) {
-		select {
-		case s.observationSemaphore <- struct{}{}:
-			defer func() { <-s.observationSemaphore }()
-		case <-ctx.Done():
-			return CredentialObservationResponse{}, ctx.Err()
-		}
-		observeContext, cancelObserve := context.WithTimeout(ctx, defaultSubscriptionControlTimeout)
-		defer cancelObserve()
-		return s.refreshNexusTokenObservation(observeContext, group, credential, previous, flight)
-	}
 	if mode == observationRefreshAfterReset {
 		s.writeMu.Lock()
 		if !s.observationFlightCurrent(groupID, credentialID, flight) {
@@ -271,6 +260,17 @@ func (s *Service) refreshCredentialObservationOnce(
 		if invalidateErr != nil {
 			return CredentialObservationResponse{}, invalidateErr
 		}
+	}
+	if group.ChannelID == string(channel.NexusToken) {
+		select {
+		case s.observationSemaphore <- struct{}{}:
+			defer func() { <-s.observationSemaphore }()
+		case <-ctx.Done():
+			return CredentialObservationResponse{}, ctx.Err()
+		}
+		observeContext, cancelObserve := context.WithTimeout(ctx, defaultSubscriptionControlTimeout)
+		defer cancelObserve()
+		return s.refreshNexusTokenObservation(observeContext, group, credential, previous, flight)
 	}
 	now := s.now().UTC()
 	preparedCredential, err := s.prepareStoredSubscriptionCredential(ctx, group, credential)

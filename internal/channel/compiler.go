@@ -157,6 +157,9 @@ func compileModule(source spec.Definition, extensions compiledExtensions) (defin
 	if source.Capabilities.ResetCreditAction != "" && source.Capabilities.QuotaObservation == "" {
 		return definition{}, fmt.Errorf("channel %q binds reset credit without quota observation", id)
 	}
+	if source.Capabilities.APIKeyResetCredit && (source.Connection.Type != spec.ConnectionAPIKey || !source.Capabilities.APIKeyQuotaObservation) {
+		return definition{}, fmt.Errorf("channel %q binds API key reset credit without API key quota observation", id)
+	}
 
 	fixedBaseURL := ""
 	var fixedTargetConfig json.RawMessage
@@ -623,7 +626,7 @@ func publicCapabilities(
 		CredentialActions: []CredentialAction{},
 		OutboundProxy:     providerKind.SupportsOutboundProxy(),
 	}
-	if source.ResetCreditAction != "" {
+	if source.ResetCreditAction != "" || source.APIKeyResetCredit {
 		result.CredentialActions = append(result.CredentialActions, CredentialActionResetCredit)
 	}
 	for _, route := range routes {

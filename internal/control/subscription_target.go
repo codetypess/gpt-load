@@ -15,7 +15,7 @@ func sameSubscriptionTarget(before, after models.Group) bool {
 		before.ConnectionType == after.ConnectionType && bytes.Equal(bytes.TrimSpace(before.Params), bytes.TrimSpace(after.Params))
 }
 
-func (s *Service) restoreCredentialRuntimeForTarget(ctx context.Context, group models.Group, credentialID uint) (bool, bool, error) {
+func (s *Service) restoreCredentialRuntimeForTarget(ctx context.Context, group models.Group, credential models.Credential) (bool, bool, error) {
 	// 上游已确认消耗成功，客户端取消不能中断本地收尾。
 	finalizeContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), controlTransactionCleanupTimeout)
 	defer cancel()
@@ -28,7 +28,16 @@ func (s *Service) restoreCredentialRuntimeForTarget(ctx context.Context, group m
 	if !sameSubscriptionTarget(group, current) {
 		return false, false, nil
 	}
-	return s.restoreCredentialRuntimeAfterReset(credentialID), true, nil
+	if group.ChannelID == string(channel.NexusToken) {
+		var currentCredential models.Credential
+		if err := s.db.WithContext(finalizeContext).Select("fingerprint").Take(&currentCredential, "id = ? AND group_id = ?", credential.ID, group.ID).Error; err != nil {
+			return false, false, err
+		}
+		if currentCredential.Fingerprint != credential.Fingerprint {
+			return false, false, nil
+		}
+	}
+	return s.restoreCredentialRuntimeAfterReset(credential.ID), true, nil
 }
 
 // resolveSubscriptionTarget validates stored channel parameters and freezes

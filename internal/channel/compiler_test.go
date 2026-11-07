@@ -75,6 +75,20 @@ func TestCompilerRejectsResetCreditWithoutObservation(t *testing.T) {
 	}
 }
 
+func TestNexusTokenResetCreditUsesWebsiteCapability(t *testing.T) {
+	t.Parallel()
+	descriptor, ok := NewRegistry().Get(NexusToken)
+	if !ok || descriptor.Connection.Type != "api_key" || !descriptor.Capabilities.QuotaObservation ||
+		!reflect.DeepEqual(descriptor.Capabilities.CredentialActions, []CredentialAction{CredentialActionResetCredit}) {
+		t.Fatalf("NexusToken capabilities = %#v", descriptor)
+	}
+	nexus := findModule(t, builtInModules(), NexusToken)
+	nexus.Definition.Capabilities.APIKeyQuotaObservation = false
+	if _, err := compileBuiltInModules([]spec.Module{nexus}); err == nil {
+		t.Fatal("accepted website reset without quota observation")
+	}
+}
+
 func TestCompilerRejectsSubscriptionCapabilityOnAPIKeyChannel(t *testing.T) {
 	t.Parallel()
 

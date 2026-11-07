@@ -332,10 +332,12 @@ func NewResponsesCreateRoute(
 type CapabilityBindings struct {
 	// APIKeyQuotaObservation is independent of subscription authentication.
 	APIKeyQuotaObservation bool
-	SubscriptionDriver     SubscriptionDriverID
-	ModelDiscovery         UtilityID
-	QuotaObservation       UtilityID
-	ResetCreditAction      ActionID
+	// APIKeyResetCredit uses a linked website session, independently of inference.
+	APIKeyResetCredit  bool
+	SubscriptionDriver SubscriptionDriverID
+	ModelDiscovery     UtilityID
+	QuotaObservation   UtilityID
+	ResetCreditAction  ActionID
 }
 
 // Definition is the complete, code-owned declaration for one channel. Every

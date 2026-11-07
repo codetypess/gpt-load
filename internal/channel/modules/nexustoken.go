@@ -35,7 +35,7 @@ func NexusToken() spec.Module {
 				{Key: "email", Label: "Email", InputKind: spec.InputText, Normalizer: spec.NormalizeNonEmpty},
 				{Key: "plan_name", Label: "Plan", InputKind: spec.InputText, Normalizer: spec.NormalizeNonEmpty},
 			},
-			Capabilities: spec.CapabilityBindings{APIKeyQuotaObservation: true},
+			Capabilities: spec.CapabilityBindings{APIKeyQuotaObservation: true, APIKeyResetCredit: true},
 			Provider: spec.ProviderBinding{
 				ProviderKind:    spec.ProviderMultiProtocolGateway,
 				DefaultBaseURLs: []string{"https://intl.freehyy.com"},

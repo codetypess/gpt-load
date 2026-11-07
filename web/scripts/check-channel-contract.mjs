@@ -66,12 +66,15 @@ try {
     ],
     total: 2,
   }
+  catalog.items[1].capabilities.credential_actions = ['reset_credit']
   const result = projectChannelList(catalog)
   assert.deepEqual(
     result.items.map((item) => item.channel_id),
     ['newapi', 'nexustoken'],
   )
   assert.equal(result.items[1].capabilities.quota_observation, true)
+  assert.deepEqual(result.items[1].capabilities.credential_actions, ['reset_credit'])
+  assert.equal((await readModern(catalog))[1].resetCredit, true)
   assert.equal(
     result.items[1].credential_fields.find((item) => item.key === 'email').sensitive,
     false,

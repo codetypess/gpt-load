@@ -62,6 +62,9 @@ func (s *Service) ConsumeCredentialResetCredit(
 	if err != nil {
 		return ResetCreditConsumeResponse{}, err
 	}
+	if group.ChannelID == string(channel.NexusToken) {
+		return s.consumeNexusTokenResetCredit(ctx, group, credential, idempotencyKey)
+	}
 	network, err := s.credentialNetworkContext(ctx, s.db, group, credential)
 	if err != nil {
 		return ResetCreditConsumeResponse{}, err
@@ -142,7 +145,18 @@ func (s *Service) ConsumeCredentialResetCredit(
 	result := storedResetCreditResult{
 		Status: upstream.Status, WindowsReset: upstream.WindowsReset, RedeemedAtMS: upstream.RedeemedAtMS,
 	}
-	runtimeRestored, targetCurrent, targetErr := s.restoreCredentialRuntimeForTarget(ctx, group, credentialID)
+	return s.completeCredentialResetCredit(ctx, group, credential, operation, result)
+}
+
+func (s *Service) completeCredentialResetCredit(
+	ctx context.Context,
+	group models.Group,
+	credential models.Credential,
+	operation models.CredentialResetOperation,
+	result storedResetCreditResult,
+) (ResetCreditConsumeResponse, error) {
+	groupID, credentialID := group.ID, credential.ID
+	runtimeRestored, targetCurrent, targetErr := s.restoreCredentialRuntimeForTarget(ctx, group, credential)
 	canonicalResult, err := canonicaljson.Marshal(result)
 	if err != nil || s.finishResetCreditOperation(
 		operation,
@@ -254,6 +268,17 @@ func (s *Service) beginResetCreditOperation(
 	digest [sha256.Size]byte,
 	idempotencyKey string,
 ) (models.CredentialResetOperation, bool, error) {
+	return s.beginResetCreditOperationWithRetry(ctx, groupID, credentialID, digest, idempotencyKey, true)
+}
+
+func (s *Service) beginResetCreditOperationWithRetry(
+	ctx context.Context,
+	groupID uint,
+	credentialID uint,
+	digest [sha256.Size]byte,
+	idempotencyKey string,
+	allowRetry bool,
+) (models.CredentialResetOperation, bool, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	nowMS := s.now().UTC().UnixMilli()
@@ -265,7 +290,7 @@ func (s *Service) beginResetCreditOperation(
 			existing.GroupID != groupID || existing.CredentialID != credentialID {
 			return models.CredentialResetOperation{}, false, app_errors.ErrIdempotencyKeyReused
 		}
-		if resetCreditOperationCanRetry(existing, nowMS) {
+		if allowRetry && resetCreditOperationCanRetry(existing, nowMS) {
 			// 准备失败后的重试与新操作一样，必须避让其他正在兑换的请求。
 			if existing.State == models.CredentialResetOperationRejected && !s.resetCreditOperationAllowsNewKey(ctx, credentialID) {
 				return models.CredentialResetOperation{}, false, app_errors.ErrResetCreditOutcomeUnknown
