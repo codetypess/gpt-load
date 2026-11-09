@@ -138,6 +138,12 @@ const navigationReport = computed(() =>
 const navigationPending = computed(
   () => usageQuery.isFetching.value && navigationReport.value === undefined,
 )
+const performanceMetric = ref<'speed' | 'firstResponse'>('speed')
+const performanceMetricOptions = computed(() => [
+  { value: 'speed', label: t('monitor.usage.speed.metric') },
+  { value: 'firstResponse', label: t('monitor.usage.firstResponse.metric') },
+])
+
 const distributionDimension = ref<UsageDistributionDimension>('model')
 const distributionMetric = ref<UsageDistributionMetric>('cost')
 const distribution = computed(() => {
@@ -642,12 +648,27 @@ defineExpose({
         <section class="usage-trend-panel" aria-labelledby="usage-speed-title">
           <MonitorSectionHeading
             id="usage-speed-title"
-            :title="t('monitor.usage.speed.title')"
-            :description="t('monitor.usage.speed.description')"
+            :title="t(`monitor.usage.${performanceMetric}.title`)"
+            :description="t(`monitor.usage.${performanceMetric}.description`)"
             :meta="t('monitor.usage.speed.meta', { granularity: granularityLabel() })"
-          />
+          >
+            <template #actions>
+              <SegmentedControl
+                :model-value="performanceMetric"
+                :label="t('monitor.usage.speed.metricLabel')"
+                :options="performanceMetricOptions"
+                size="compact"
+                @update:model-value="
+                  (value) => {
+                    if (value === 'speed' || value === 'firstResponse') performanceMetric = value
+                  }
+                "
+              />
+            </template>
+          </MonitorSectionHeading>
           <div class="usage-trend-panel__chart">
             <ModelSpeedChart
+              :metric="performanceMetric"
               :series="report.model_speed"
               :range-start="report.from_ms"
               :range-end="report.to_ms"

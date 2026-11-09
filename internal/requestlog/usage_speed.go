@@ -29,11 +29,13 @@ type usageModelSpeedRank struct {
 }
 
 type usageModelSpeedRow struct {
-	BucketStartMS int64 `gorm:"column:speed_bucket_ms"`
-	Model         string
-	RequestCount  int64
-	OutputTokens  int64
-	DurationMS    int64
+	BucketStartMS        int64 `gorm:"column:speed_bucket_ms"`
+	Model                string
+	RequestCount         int64
+	OutputTokens         int64
+	DurationMS           int64
+	FirstResponseCount   int64
+	FirstResponseTotalMS int64
 }
 
 type usageModelSpeedPointKey struct {
@@ -51,9 +53,11 @@ type usageModelSpeedStatKey struct {
 }
 
 type usageModelSpeedDelta struct {
-	RequestCount int64
-	OutputTokens int64
-	DurationMS   int64
+	RequestCount         int64
+	OutputTokens         int64
+	DurationMS           int64
+	FirstResponseCount   int64
+	FirstResponseTotalMS int64
 }
 
 func usageModelSpeedEligible(row models.RequestLog) bool {
@@ -102,6 +106,12 @@ func applyUsageModelSpeedJournals(
 		if err := checkedInt64Add(&row.DurationMS, delta.DurationMS, "speed duration_ms"); err != nil {
 			return err
 		}
+		if err := checkedInt64Add(&row.FirstResponseCount, delta.FirstResponseCount, "speed first_response_count"); err != nil {
+			return err
+		}
+		if err := checkedInt64Add(&row.FirstResponseTotalMS, delta.FirstResponseTotalMS, "speed first_response_total_ms"); err != nil {
+			return err
+		}
 		if err := tx.Clauses(usageModelSpeedStatUpsertClause()).Create(&row).Error; err != nil {
 			return fmt.Errorf("upsert usage model speed stat: %w", err)
 		}
@@ -114,6 +124,9 @@ func buildUsageModelSpeedJournalDeltas(
 ) (map[usageModelSpeedStatKey]usageModelSpeedDelta, error) {
 	deltas := make(map[usageModelSpeedStatKey]usageModelSpeedDelta)
 	for _, journal := range journals {
+		if !validUsageFirstResponse(journal.SpeedRequestCount, journal.SpeedFirstResponseCount, journal.SpeedFirstResponseTotalMS) {
+			return nil, fmt.Errorf("aggregate usage model speed journal %q: invalid first response", journal.RequestID)
+		}
 		if journal.SpeedRequestCount == 0 {
 			if journal.SpeedOutputTokens != 0 || journal.SpeedDurationMS != 0 {
 				return nil, fmt.Errorf("aggregate usage model speed journal %q: invalid empty values", journal.RequestID)
@@ -142,6 +155,12 @@ func buildUsageModelSpeedJournalDeltas(
 			return nil, err
 		}
 		if err := checkedInt64Add(&delta.DurationMS, journal.SpeedDurationMS, "speed duration_ms"); err != nil {
+			return nil, err
+		}
+		if err := checkedInt64Add(&delta.FirstResponseCount, journal.SpeedFirstResponseCount, "speed first_response_count"); err != nil {
+			return nil, err
+		}
+		if err := checkedInt64Add(&delta.FirstResponseTotalMS, journal.SpeedFirstResponseTotalMS, "speed first_response_total_ms"); err != nil {
 			return nil, err
 		}
 		deltas[key] = delta
@@ -199,7 +218,8 @@ func queryExistingUsageModelSpeedStats(
 	result := make(map[usageModelSpeedStatKey]models.UsageModelSpeedStat, len(rows))
 	for _, row := range rows {
 		if row.RequestCount <= 0 || row.OutputTokens <= 0 || row.DurationMS <= 0 ||
-			row.BucketStartMS < 0 || row.BucketStartMS%UsageFiveMinuteBucketMS != 0 || row.Model == "" {
+			row.BucketStartMS < 0 || row.BucketStartMS%UsageFiveMinuteBucketMS != 0 || row.Model == "" ||
+			!validUsageFirstResponse(row.RequestCount, row.FirstResponseCount, row.FirstResponseTotalMS) {
 			return nil, fmt.Errorf("query existing usage model speed stats: corrupt row")
 		}
 		key := usageModelSpeedStatKey{
@@ -218,7 +238,7 @@ func usageModelSpeedStatUpsertClause() clause.OnConflict {
 			{Name: "bucket_start_ms"}, {Name: "access_key_id"}, {Name: "channel_id"},
 			{Name: "group_id"}, {Name: "credential_id"}, {Name: "model"},
 		},
-		DoUpdates: clause.AssignmentColumns([]string{"request_count", "output_tokens", "duration_ms"}),
+		DoUpdates: clause.AssignmentColumns([]string{"request_count", "output_tokens", "duration_ms", "first_response_count", "first_response_total_ms"}),
 	}
 }
 
@@ -235,7 +255,8 @@ func queryUsageModelSpeed(
 	totals := make(map[string]usageModelSpeedRank)
 	for _, row := range rows {
 		if row.Model == "" || row.RequestCount <= 0 || row.OutputTokens <= 0 || row.DurationMS <= 0 ||
-			row.BucketStartMS < 0 || row.BucketStartMS%bucketWidthMS != 0 {
+			row.BucketStartMS < 0 || row.BucketStartMS%bucketWidthMS != 0 ||
+			!validUsageFirstResponse(row.RequestCount, row.FirstResponseCount, row.FirstResponseTotalMS) {
 			return nil, fmt.Errorf("query usage model speed: invalid aggregate")
 		}
 		key := usageModelSpeedPointKey{BucketStartMS: row.BucketStartMS, Model: row.Model}
@@ -247,6 +268,12 @@ func queryUsageModelSpeed(
 			return nil, err
 		}
 		if err := checkedInt64Add(&delta.DurationMS, row.DurationMS, "query speed duration_ms"); err != nil {
+			return nil, err
+		}
+		if err := checkedInt64Add(&delta.FirstResponseCount, row.FirstResponseCount, "query speed first_response_count"); err != nil {
+			return nil, err
+		}
+		if err := checkedInt64Add(&delta.FirstResponseTotalMS, row.FirstResponseTotalMS, "query speed first_response_total_ms"); err != nil {
 			return nil, err
 		}
 		merged[key] = delta
@@ -296,7 +323,8 @@ func queryUsageModelSpeed(
 		series.Points = append(series.Points, UsageModelSpeedPoint{
 			BucketStartMS: startMS, BucketEndMS: endMS,
 			RequestCount: delta.RequestCount, OutputTokens: delta.OutputTokens,
-			DurationMS: delta.DurationMS,
+			DurationMS:         delta.DurationMS,
+			FirstResponseCount: delta.FirstResponseCount, FirstResponseTotalMS: delta.FirstResponseTotalMS,
 		})
 	}
 	for index := range result {
@@ -323,7 +351,9 @@ func queryUsageModelSpeedRows(
 			Where("bucket_start_ms >= ? AND bucket_start_ms < ?", fullFromMS, fullToMS).
 			Select(`bucket_start_ms - bucket_start_ms % ? AS speed_bucket_ms,
 				model, SUM(request_count) AS request_count,
-				SUM(output_tokens) AS output_tokens, SUM(duration_ms) AS duration_ms`, bucketWidthMS).
+				SUM(output_tokens) AS output_tokens, SUM(duration_ms) AS duration_ms,
+				SUM(first_response_count) AS first_response_count,
+				SUM(first_response_total_ms) AS first_response_total_ms`, bucketWidthMS).
 			Group("speed_bucket_ms, model").
 			Scan(&aggregateRows).Error; err != nil {
 			return nil, fmt.Errorf("query usage model speed aggregates: %w", err)
@@ -343,7 +373,9 @@ func queryUsageModelSpeedRows(
 		if err := rawScope.
 			Select(`completed_at_ms - completed_at_ms % ? AS speed_bucket_ms,
 				upstream_model AS model, COUNT(*) AS request_count,
-				SUM(output_tokens) AS output_tokens, SUM(duration_ms) AS duration_ms`, bucketWidthMS).
+				SUM(output_tokens) AS output_tokens, SUM(duration_ms) AS duration_ms,
+				SUM(CASE WHEN stream = ? AND first_response_ms > 0 THEN 1 ELSE 0 END) AS first_response_count,
+				SUM(CASE WHEN stream = ? AND first_response_ms > 0 THEN first_response_ms ELSE 0 END) AS first_response_total_ms`, bucketWidthMS, true, true).
 			Group("speed_bucket_ms, upstream_model").
 			Scan(&rawRows).Error; err != nil {
 			return nil, fmt.Errorf("query usage model speed edge logs: %w", err)
@@ -397,4 +429,8 @@ func usageModelSpeedRawScope(db *gorm.DB, input UsageQuery) *gorm.DB {
 		Where("usage_state IN ?", []string{"complete", "partial"}).
 		Where("output_tokens > 0").
 		Where("duration_ms > 0")
+}
+
+func validUsageFirstResponse(requestCount, count, totalMS int64) bool {
+	return count >= 0 && count <= requestCount && totalMS >= count && (count > 0 || totalMS == 0)
 }

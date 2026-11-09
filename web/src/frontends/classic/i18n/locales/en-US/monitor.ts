@@ -359,6 +359,8 @@ export default {
         outputTokens: 'Output tokens',
       },
       speed: {
+        metric: 'Speed',
+        metricLabel: 'Model performance metric',
         title: 'Output speed by model',
         description:
           'TPS means output tokens per second. Each time bucket divides total output tokens by total request duration, including waiting, retries, credential rotation, and reasoning time.',
@@ -367,6 +369,15 @@ export default {
         meta: 'Top 5 · {granularity}',
         empty: 'No measurable output speed in this range.',
         requests: '{count} measured requests',
+      },
+      firstResponse: {
+        metric: 'First response',
+        title: 'Average first response by model',
+        description:
+          'Shows the top 5 models by output tokens. Average first response divides measured first-response duration by measured request count, using successful streaming requests eligible for output speed with a positive first response. Buckets without measurements remain empty.',
+        accessibleDescription:
+          'Average first response in seconds by time bucket and upstream model. Buckets without measurements remain empty.',
+        empty: 'No measurable first response in this range.',
       },
       series: {
         title: 'UTC buckets',

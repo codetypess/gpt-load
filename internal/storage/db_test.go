@@ -690,6 +690,7 @@ func TestAutoMigrateCreatesUsageJournalAndMigrationLedger(t *testing.T) {
 		"0033_usage_model_speed_stats",
 		"0034_nexustoken_sessions",
 		"0035_access_key_calendar_day",
+		"0036_usage_model_first_response",
 	}
 	if !reflect.DeepEqual(migrationIDs, wantMigrationIDs) {
 		t.Fatalf("schema_migrations IDs = %v, want %v", migrationIDs, wantMigrationIDs)

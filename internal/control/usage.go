@@ -52,11 +52,13 @@ type usageSeriesResponse struct {
 }
 
 type usageModelSpeedPointResponse struct {
-	BucketStartMS int64 `json:"bucket_start_ms"`
-	BucketEndMS   int64 `json:"bucket_end_ms"`
-	RequestCount  int64 `json:"request_count"`
-	OutputTokens  int64 `json:"output_tokens"`
-	DurationMS    int64 `json:"duration_ms"`
+	BucketStartMS        int64 `json:"bucket_start_ms"`
+	BucketEndMS          int64 `json:"bucket_end_ms"`
+	RequestCount         int64 `json:"request_count"`
+	OutputTokens         int64 `json:"output_tokens"`
+	DurationMS           int64 `json:"duration_ms"`
+	FirstResponseCount   int64 `json:"first_response_count"`
+	FirstResponseTotalMS int64 `json:"first_response_total_ms"`
 }
 
 type usageModelSpeedSeriesResponse struct {
@@ -433,6 +435,11 @@ func mapUsageModelSpeed(
 					return nil, fmt.Errorf("map usage model speed: unsafe aggregate")
 				}
 			}
+			if point.FirstResponseCount < 0 || point.FirstResponseCount > point.RequestCount ||
+				point.FirstResponseTotalMS < point.FirstResponseCount || point.FirstResponseTotalMS > maxSafeInteger ||
+				(point.FirstResponseCount == 0 && point.FirstResponseTotalMS != 0) {
+				return nil, fmt.Errorf("map usage model speed: invalid first response aggregate")
+			}
 			if err := validateSafeMilliseconds(point.BucketStartMS); err != nil {
 				return nil, fmt.Errorf("map usage model speed bucket_start_ms: %w", err)
 			}
@@ -448,11 +455,13 @@ func mapUsageModelSpeed(
 			}
 			previousBucketStartMS = point.BucketStartMS
 			mapped.Points = append(mapped.Points, usageModelSpeedPointResponse{
-				BucketStartMS: point.BucketStartMS,
-				BucketEndMS:   point.BucketEndMS,
-				RequestCount:  point.RequestCount,
-				OutputTokens:  point.OutputTokens,
-				DurationMS:    point.DurationMS,
+				BucketStartMS:        point.BucketStartMS,
+				BucketEndMS:          point.BucketEndMS,
+				RequestCount:         point.RequestCount,
+				OutputTokens:         point.OutputTokens,
+				DurationMS:           point.DurationMS,
+				FirstResponseCount:   point.FirstResponseCount,
+				FirstResponseTotalMS: point.FirstResponseTotalMS,
 			})
 		}
 		result = append(result, mapped)

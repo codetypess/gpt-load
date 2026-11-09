@@ -142,8 +142,10 @@ func TestQueryUsageModelSpeedAppliesUsageFilters(t *testing.T) {
 	from := time.Date(2026, time.October, 9, 13, 0, 0, 0, time.UTC)
 	first := aggregationRow("speed-filter-first", from.Add(time.Minute), 7, "selected")
 	first.AccessKeyID, first.ChannelID, first.CredentialID = 41, "openai", 11
+	first.Stream, first.FirstResponseMs = true, new(int64(200))
 	second := aggregationRow("speed-filter-second", from.Add(time.Minute), 8, "other")
 	second.AccessKeyID, second.ChannelID, second.CredentialID = 42, "anthropic", 12
+	second.Stream, second.FirstResponseMs = true, new(int64(800))
 	if err := (&gormBatchWriter{db: db}).WriteBatch(t.Context(), []models.RequestLog{first, second}); err != nil {
 		t.Fatal(err)
 	}
@@ -159,6 +161,9 @@ func TestQueryUsageModelSpeedAppliesUsageFilters(t *testing.T) {
 	if len(series) != 1 || series[0].Model != "selected" || len(series[0].Points) != 1 {
 		t.Fatalf("filtered speed series = %#v", series)
 	}
+	if point := series[0].Points[0]; point.FirstResponseCount != 1 || point.FirstResponseTotalMS != 200 {
+		t.Fatalf("filtered first response point = %#v", point)
+	}
 }
 
 func TestQueryUsageModelSpeedUsesAggregatesAndRawEdgeBuckets(t *testing.T) {
@@ -168,6 +173,7 @@ func TestQueryUsageModelSpeedUsesAggregatesAndRawEdgeBuckets(t *testing.T) {
 		value := aggregationRow(id, at, 7, "hybrid-model")
 		value.OutputTokens = outputTokens
 		value.DurationMs = durationMS
+		value.Stream, value.FirstResponseMs = true, new(durationMS/10)
 		return value
 	}
 	rows := []models.RequestLog{
@@ -202,8 +208,53 @@ func TestQueryUsageModelSpeedUsesAggregatesAndRawEdgeBuckets(t *testing.T) {
 	for index, expected := range want {
 		point := series[0].Points[index]
 		if point.BucketStartMS != expected.start.UnixMilli() || point.BucketEndMS != expected.end.UnixMilli() ||
-			point.RequestCount != expected.requests || point.OutputTokens != expected.output || point.DurationMS != expected.time {
+			point.RequestCount != expected.requests || point.OutputTokens != expected.output || point.DurationMS != expected.time ||
+			point.FirstResponseCount != 1 || point.FirstResponseTotalMS != expected.time/10 {
 			t.Fatalf("hybrid point %d = %#v, want %#v", index, point, expected)
 		}
 	}
+}
+
+func TestQueryUsageModelFirstResponseCountsOnlyMeasuredStreamingRequests(t *testing.T) {
+	db := openRequestLogQueryDB(t)
+	from := time.Date(2026, time.November, 9, 13, 0, 0, 0, time.UTC)
+	row := func(id string, stream bool, firstResponse *int64) models.RequestLog {
+		value := aggregationRow(id, from.Add(time.Minute), 7, "response-model")
+		value.Stream, value.FirstResponseMs = stream, firstResponse
+		return value
+	}
+	rows := []models.RequestLog{
+		row("response-fast", true, new(int64(200))),
+		row("response-slow", true, new(int64(800))),
+		row("response-missing", true, nil),
+		row("response-zero", true, new(int64(0))),
+		row("response-nonstream", false, new(int64(5_000))),
+	}
+	// Replayed journals must not count the same response twice.
+	for range 2 {
+		if err := (&gormBatchWriter{db: db}).WriteBatch(t.Context(), rows); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertPoint := func(fromMS, toMS int64) {
+		t.Helper()
+		series, err := queryUsageModelSpeed(db, UsageQuery{FromMS: fromMS, ToMS: toMS}, UsageFiveMinuteBucketMS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(series) != 1 || len(series[0].Points) != 1 {
+			t.Fatalf("first response series = %#v", series)
+		}
+		point := series[0].Points[0]
+		if point.RequestCount != 5 || point.FirstResponseCount != 2 || point.FirstResponseTotalMS != 1_000 {
+			t.Fatalf("first response point = %#v, want two measured requests averaging 500 ms", point)
+		}
+	}
+	assertPoint(from.UnixMilli(), from.Add(time.Hour).UnixMilli())
+	assertPoint(from.Add(30*time.Second).UnixMilli(), from.Add(2*time.Minute).UnixMilli())
+	if err := db.Where("upstream_model = ?", "response-model").Delete(&models.RequestLog{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Full buckets retain first-response statistics after log retention.
+	assertPoint(from.UnixMilli(), from.Add(time.Hour).UnixMilli())
 }

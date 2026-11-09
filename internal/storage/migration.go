@@ -136,6 +136,7 @@ var migrations = []migration{
 	{ID: migrationfiles.ID0033, Legacy: map[string]func(*gorm.DB) error{"0033_nexustoken_sessions": migrationfiles.Validate0034}, Up: upUsageModelSpeedStats0033, Validate: migrationfiles.Validate0033, ValidateRecoverable: migrationfiles.ValidateRecoverable0033},
 	{ID: migrationfiles.ID0034, Legacy: map[string]func(*gorm.DB) error{"0034_access_key_calendar_day": migrationfiles.Validate0035}, Up: migrationfiles.Up0034, Validate: migrationfiles.Validate0034, ValidateRecoverable: migrationfiles.ValidateRecoverable0034},
 	{ID: migrationfiles.ID0035, Up: migrationfiles.Up0035, Validate: migrationfiles.Validate0035, ValidateRecoverable: migrationfiles.ValidateRecoverable0035},
+	{ID: migrationfiles.ID0036, Up: migrationfiles.Up0036, Validate: migrationfiles.Validate0036, ValidateRecoverable: migrationfiles.ValidateRecoverable0036},
 }
 
 func upUsageModelSpeedStats0033(db *gorm.DB) error {

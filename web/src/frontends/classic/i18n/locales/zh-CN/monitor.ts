@@ -343,6 +343,8 @@ export default {
         outputTokens: '输出 Token',
       },
       speed: {
+        metric: '速度',
+        metricLabel: '模型性能指标',
         title: '按模型的输出速度趋势',
         description:
           'TPS 表示每秒输出 Token 数；每个时间桶按输出 Token 总量 ÷ 请求总耗时（秒）计算，等待、重试、凭据轮换与思考耗时均计入。',
@@ -350,6 +352,15 @@ export default {
         meta: 'Top 5 · {granularity}',
         empty: '该范围内暂无可计算的输出速度。',
         requests: '{count} 个有效请求',
+      },
+      firstResponse: {
+        metric: '首响',
+        title: '按模型的平均首响趋势',
+        description:
+          '展示输出 Token 总量排名前 5 的模型。平均首响 = 有效首响总时长 ÷ 有效请求数，仅统计可计算输出速度且首响大于 0 的成功流式请求；无有效记录的时间桶留空。',
+        accessibleDescription:
+          '按时间桶与上游模型展示平均首响（秒），缺少有效首响记录的时间桶留空。',
+        empty: '该范围内暂无可计算的平均首响。',
       },
       series: {
         title: 'UTC 时间桶',

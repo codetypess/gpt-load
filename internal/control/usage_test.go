@@ -85,11 +85,13 @@ func TestMapUsageResponsePreservesPerModelSpeedSources(t *testing.T) {
 		ModelSpeed: []requestlog.UsageModelSpeedSeries{{
 			Model: "gpt-test",
 			Points: []requestlog.UsageModelSpeedPoint{{
-				BucketStartMS: from + int64(3*time.Minute/time.Millisecond),
-				BucketEndMS:   from + int64(8*time.Minute/time.Millisecond),
-				RequestCount:  2,
-				OutputTokens:  400,
-				DurationMS:    4_000,
+				BucketStartMS:        from + int64(3*time.Minute/time.Millisecond),
+				BucketEndMS:          from + int64(8*time.Minute/time.Millisecond),
+				RequestCount:         2,
+				OutputTokens:         400,
+				DurationMS:           4_000,
+				FirstResponseCount:   1,
+				FirstResponseTotalMS: 500,
 			}},
 		}},
 		Distributions: usageTestDistributions(requestlog.UsageAggregate{}, requestlog.UsageDistribution{}),
@@ -100,7 +102,8 @@ func TestMapUsageResponsePreservesPerModelSpeedSources(t *testing.T) {
 	}
 	if len(result.ModelSpeed) != 1 || result.ModelSpeed[0].Model != "gpt-test" ||
 		len(result.ModelSpeed[0].Points) != 1 || result.ModelSpeed[0].Points[0].OutputTokens != 400 ||
-		result.ModelSpeed[0].Points[0].DurationMS != 4_000 || result.ModelSpeed[0].Points[0].RequestCount != 2 {
+		result.ModelSpeed[0].Points[0].DurationMS != 4_000 || result.ModelSpeed[0].Points[0].RequestCount != 2 ||
+		result.ModelSpeed[0].Points[0].FirstResponseCount != 1 || result.ModelSpeed[0].Points[0].FirstResponseTotalMS != 500 {
 		t.Fatalf("model speed response = %#v", result.ModelSpeed)
 	}
 
@@ -1077,5 +1080,31 @@ func assertUsageErrorCode(t *testing.T, recorder *httptest.ResponseRecorder, wan
 	}
 	if recorder.Code != http.StatusBadRequest || envelope.Code != want {
 		t.Fatalf("error response = %d/%q, want 400/%q; body=%s", recorder.Code, envelope.Code, want, recorder.Body.String())
+	}
+}
+
+func TestMapUsageModelSpeedRejectsInvalidFirstResponseSources(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name           string
+		count, totalMS int64
+	}{
+		{"negative_count", -1, 0},
+		{"negative_duration", 0, -1},
+		{"too_many_samples", 3, 300},
+		{"duration_without_samples", 0, 100},
+		{"samples_without_duration", 1, 0},
+		{"unsafe_duration", 1, maxSafeInteger + 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := mapUsageModelSpeed(requestlog.UsageQuery{FromMS: 0, ToMS: 300_000}, 300_000,
+				[]requestlog.UsageModelSpeedSeries{{Model: "test", Points: []requestlog.UsageModelSpeedPoint{{
+					BucketStartMS: 0, BucketEndMS: 300_000, RequestCount: 2, OutputTokens: 100, DurationMS: 2_000,
+					FirstResponseCount: test.count, FirstResponseTotalMS: test.totalMS,
+				}}}})
+			if err == nil {
+				t.Fatal("accepted invalid first response aggregate")
+			}
+		})
 	}
 }

@@ -49,6 +49,8 @@ export interface UsageAggregateDto {
 }
 
 export interface UsageModelSpeedPointDto {
+  first_response_count: number
+  first_response_total_ms: number
   bucket_start_ms: number
   bucket_end_ms: number
   request_count: number
@@ -120,6 +122,8 @@ const aggregateKeys = [
 ] as const
 const aggregateFields = [...aggregateKeys, 'estimated_cost_nano_usd'] as const
 const modelSpeedPointFields = [
+  'first_response_count',
+  'first_response_total_ms',
   'bucket_start_ms',
   'bucket_end_ms',
   'request_count',
@@ -297,10 +301,22 @@ export function projectUsageReport(value: unknown): UsageReportDto {
         invalidResponse()
       }
       previousBucketStartMS = bucketStartMS
+      const requestCount = projectSafeInteger(point.request_count, { minimum: 1 })
+      const firstResponseCount = projectSafeInteger(point.first_response_count, { minimum: 0 })
+      const firstResponseTotalMS = projectSafeInteger(point.first_response_total_ms, { minimum: 0 })
+      if (
+        firstResponseCount > requestCount ||
+        firstResponseTotalMS < firstResponseCount ||
+        (firstResponseCount === 0 && firstResponseTotalMS !== 0)
+      ) {
+        invalidResponse()
+      }
       return {
         bucket_start_ms: bucketStartMS,
         bucket_end_ms: bucketEndMS,
-        request_count: projectSafeInteger(point.request_count, { minimum: 1 }),
+        request_count: requestCount,
+        first_response_count: firstResponseCount,
+        first_response_total_ms: firstResponseTotalMS,
         output_tokens: projectSafeInteger(point.output_tokens, { minimum: 1 }),
         duration_ms: projectSafeInteger(point.duration_ms, { minimum: 1 }),
       }

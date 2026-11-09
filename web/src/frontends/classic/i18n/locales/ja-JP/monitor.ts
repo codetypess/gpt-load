@@ -359,6 +359,8 @@ export default {
         outputTokens: '出力 Token',
       },
       speed: {
+        metric: '速度',
+        metricLabel: 'モデルの性能指標',
         title: 'モデル別の出力速度推移',
         description:
           'TPS は 1 秒あたりの出力 Token 数です。各時間バケットで出力 Token 合計 ÷ リクエスト総所要時間を計算し、待機、再試行、認証情報の切り替え、推論時間も含みます。',
@@ -367,6 +369,15 @@ export default {
         meta: '上位 5 件 · {granularity}',
         empty: 'この期間には計算可能な出力速度がありません。',
         requests: '有効なリクエスト {count} 件',
+      },
+      firstResponse: {
+        metric: '初回応答',
+        title: 'モデル別の平均初回応答時間の推移',
+        description:
+          '出力 Token 合計の上位 5 モデルを表示します。平均初回応答時間は計測時間の合計 ÷ 有効リクエスト数です。出力速度を計算でき、初回応答時間が 0 より大きい成功したストリーミングリクエストのみを集計し、計測値のないバケットは空欄にします。',
+        accessibleDescription:
+          '時間バケットとアップストリームモデル別の平均初回応答時間（秒）。計測値のないバケットは空欄です。',
+        empty: 'この期間には計算可能な初回応答時間がありません。',
       },
       series: {
         title: 'UTC バケット',

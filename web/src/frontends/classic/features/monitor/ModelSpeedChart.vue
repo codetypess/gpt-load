@@ -6,6 +6,7 @@ import type { UsageModelSpeedPointDto, UsageModelSpeedSeriesDto } from '@/app/re
 import { formatInteger, formatLocalTimeRange } from '@/lib/format'
 
 const props = defineProps<{
+  metric: 'speed' | 'firstResponse'
   series: readonly UsageModelSpeedSeriesDto[]
   rangeStart: number
   rangeEnd: number
@@ -30,13 +31,31 @@ const colors = [
   'var(--color-chart-violet)',
 ]
 
+const isFirstResponse = computed(() => props.metric === 'firstResponse')
+const translationKey = computed(() => `monitor.usage.${props.metric}`)
+const unit = computed(() => (isFirstResponse.value ? 's' : 'TPS'))
+const visibleSeries = computed(() =>
+  props.series
+    .map((item, index) => ({
+      ...item,
+      color: colors[index]!,
+      points: item.points.filter(
+        (point) => !isFirstResponse.value || point.first_response_count > 0,
+      ),
+    }))
+    .filter((item) => item.points.length > 0),
+)
+
 function rate(point: UsageModelSpeedPointDto): number {
-  return (point.output_tokens / point.duration_ms) * 1000
+  return isFirstResponse.value
+    ? point.first_response_total_ms / point.first_response_count / 1000
+    : (point.output_tokens / point.duration_ms) * 1000
 }
 
 function formatRate(value: number): string {
   return new Intl.NumberFormat(props.locale, {
-    maximumFractionDigits: value < 10 ? 1 : 0,
+    minimumFractionDigits: isFirstResponse.value ? 2 : 0,
+    maximumFractionDigits: isFirstResponse.value ? 2 : value < 10 ? 1 : 0,
   }).format(value)
 }
 
@@ -45,11 +64,11 @@ function niceCeiling(value: number): number {
   const magnitude = 10 ** Math.floor(Math.log10(value))
   const normalized = value / magnitude
   const step = [1, 2, 5, 10].find((candidate) => candidate >= normalized) ?? 10
-  return Math.max(4, step * magnitude)
+  return isFirstResponse.value ? step * magnitude : Math.max(4, step * magnitude)
 }
 
 const ceiling = computed(() =>
-  niceCeiling(Math.max(0, ...props.series.flatMap((item) => item.points.map(rate)))),
+  niceCeiling(Math.max(0, ...visibleSeries.value.flatMap((item) => item.points.map(rate)))),
 )
 const x = (point: UsageModelSpeedPointDto) =>
   left +
@@ -58,7 +77,7 @@ const x = (point: UsageModelSpeedPointDto) =>
 const y = (value: number) => bottom - ((bottom - top) * value) / ceiling.value
 
 const geometry = computed(() =>
-  props.series.map((item, seriesIndex) => {
+  visibleSeries.value.map((item) => {
     const points = item.points.map((point) => ({
       source: point,
       value: rate(point),
@@ -79,19 +98,28 @@ const geometry = computed(() =>
     if (path) segments.push(path)
     const outputTokens = item.points.reduce((total, point) => total + point.output_tokens, 0)
     const durationMS = item.points.reduce((total, point) => total + point.duration_ms, 0)
+    const firstResponseCount = item.points.reduce(
+      (total, point) => total + point.first_response_count,
+      0,
+    )
+    const firstResponseTotalMS = item.points.reduce(
+      (total, point) => total + point.first_response_total_ms,
+      0,
+    )
     return {
       ...item,
-      color: colors[seriesIndex]!,
       points,
       segments,
-      average: (outputTokens / durationMS) * 1000,
+      average: isFirstResponse.value
+        ? firstResponseTotalMS / firstResponseCount / 1000
+        : (outputTokens / durationMS) * 1000,
     }
   }),
 )
 const buckets = computed(() =>
   [
     ...new Map(
-      props.series
+      visibleSeries.value
         .flatMap((item) => item.points)
         .map((point) => [point.bucket_start_ms, point] as const),
     ).values(),
@@ -104,12 +132,18 @@ const activeBucket = computed(() => {
 const activeRows = computed(() => {
   const bucket = activeBucket.value
   if (!bucket) return []
-  return geometry.value.flatMap((item) => {
-    const point = item.points.find(
-      (candidate) => candidate.source.bucket_start_ms === bucket.bucket_start_ms,
+  return geometry.value
+    .flatMap((item) => {
+      const point = item.points.find(
+        (candidate) => candidate.source.bucket_start_ms === bucket.bucket_start_ms,
+      )
+      return point ? [{ ...point, model: item.model, color: item.color }] : []
+    })
+    .sort(
+      (a, b) =>
+        (isFirstResponse.value ? a.value - b.value : b.value - a.value) ||
+        a.model.localeCompare(b.model),
     )
-    return point ? [{ ...point, model: item.model, color: item.color }] : []
-  })
 })
 const ticks = computed(() =>
   Array.from({ length: 5 }, (_, index) => ({
@@ -123,14 +157,17 @@ const timeTicks = computed(() =>
     x: left + ((right - left) * index) / 4,
   })),
 )
-const chartKey = computed(() =>
-  props.series
-    .map((item) =>
-      [item.model, ...item.points.map((point) => `${point.bucket_start_ms}:${rate(point)}`)].join(
-        ':',
-      ),
-    )
-    .join('|'),
+const chartKey = computed(
+  () =>
+    props.metric +
+    ':' +
+    visibleSeries.value
+      .map((item) =>
+        [item.model, ...item.points.map((point) => `${point.bucket_start_ms}:${rate(point)}`)].join(
+          ':',
+        ),
+      )
+      .join('|'),
 )
 
 watch(chartKey, () => (activeBucketIndex.value = null))
@@ -181,7 +218,7 @@ function onKeydown(event: KeyboardEvent): void {
     class="model-speed-chart"
     tabindex="0"
     role="group"
-    :aria-label="t('monitor.usage.speed.title')"
+    :aria-label="t(`${translationKey}.title`)"
     :aria-describedby="descriptionID"
     @blur="activeBucketIndex = null"
     @keydown="onKeydown"
@@ -189,13 +226,13 @@ function onKeydown(event: KeyboardEvent): void {
     @pointermove="selectNearest"
   >
     <span :id="descriptionID" class="model-speed-chart__visually-hidden">
-      {{ t('monitor.usage.speed.accessibleDescription') }}
+      {{ t(`${translationKey}.accessibleDescription`) }}
     </span>
     <div v-if="geometry.length" class="model-speed-chart__legend">
       <span v-for="item in geometry" :key="item.model" class="model-speed-chart__legend-item">
         <i :style="{ background: item.color }" aria-hidden="true"></i>
         <span :title="item.model">{{ item.model }}</span>
-        <strong>{{ formatRate(item.average) }} TPS</strong>
+        <strong>{{ formatRate(item.average) }} {{ unit }}</strong>
       </span>
     </div>
     <div class="model-speed-chart__plot">
@@ -206,7 +243,7 @@ function onKeydown(event: KeyboardEvent): void {
             {{ formatRate(tick.value) }}
           </text>
         </g>
-        <text :x="left" :y="top + 4" class="model-speed-chart__unit">TPS</text>
+        <text :x="left" :y="top + 4" class="model-speed-chart__unit">{{ unit }}</text>
         <g v-for="item in geometry" :key="item.model" :style="{ color: item.color }">
           <path
             v-for="(segment, index) in item.segments"
@@ -267,18 +304,21 @@ function onKeydown(event: KeyboardEvent): void {
         }}</time>
         <span v-for="row in activeRows" :key="row.model" class="model-speed-chart__tooltip-row">
           <span><i :style="{ background: row.color }"></i>{{ row.model }}</span>
-          <strong>{{ formatRate(row.value) }} TPS</strong>
+          <strong>{{ formatRate(row.value) }} {{ unit }}</strong>
           <small>
             {{
               t('monitor.usage.speed.requests', {
-                count: formatInteger(row.source.request_count, locale),
+                count: formatInteger(
+                  isFirstResponse ? row.source.first_response_count : row.source.request_count,
+                  locale,
+                ),
               })
             }}
           </small>
         </span>
       </div>
       <span v-if="!geometry.length" class="model-speed-chart__empty">
-        {{ t('monitor.usage.speed.empty') }}
+        {{ t(`${translationKey}.empty`) }}
       </span>
     </div>
   </figure>

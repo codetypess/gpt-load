@@ -600,6 +600,10 @@ func buildUsageAggregationJournals(
 				journal.SpeedRequestCount = 1
 				journal.SpeedOutputTokens = row.OutputTokens
 				journal.SpeedDurationMS = row.DurationMs
+				if row.Stream && row.FirstResponseMs != nil && *row.FirstResponseMs > 0 {
+					journal.SpeedFirstResponseCount = 1
+					journal.SpeedFirstResponseTotalMS = *row.FirstResponseMs
+				}
 			}
 			journals = append(journals, journal)
 		}

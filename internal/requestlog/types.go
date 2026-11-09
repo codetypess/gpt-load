@@ -254,16 +254,17 @@ type UsageSeriesPoint struct {
 	UsageAggregate
 }
 
-// UsageModelSpeedPoint is one model's weighted output rate source for a time bucket.
-// New points use the output-generation window (total duration minus first
-// response when known); legacy points retain their original denominator.
-// Tokens per second is derived as OutputTokens / (DurationMS / 1000).
+// UsageModelSpeedPoint stores output rate and first-response sources for a bucket.
+// TPS is OutputTokens / (DurationMS / 1000). Average first response is
+// FirstResponseTotalMS / FirstResponseCount for measured streaming requests.
 type UsageModelSpeedPoint struct {
-	BucketStartMS int64
-	BucketEndMS   int64
-	RequestCount  int64
-	OutputTokens  int64
-	DurationMS    int64
+	BucketStartMS        int64
+	BucketEndMS          int64
+	RequestCount         int64
+	OutputTokens         int64
+	DurationMS           int64
+	FirstResponseCount   int64
+	FirstResponseTotalMS int64
 }
 
 type UsageModelSpeedSeries struct {

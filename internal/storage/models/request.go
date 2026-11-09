@@ -132,32 +132,34 @@ type CredentialAttemptStat struct {
 // aggregation. It is staged, applied, and committed in the same transaction as
 // its RequestLog, and intentionally excludes request and error payloads.
 type UsageAggregationJournal struct {
-	RequestID               string `gorm:"column:request_id;type:varchar(36);primaryKey;not null"`
-	BucketStartMS           int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_journal_bucket, bucket_start_ms >= 0;index:idx_usage_aggregation_journal_pending_bucket,priority:2"`
-	AccessKeyID             uint   `gorm:"not null"`
-	GroupID                 uint   `gorm:"not null"`
-	ChannelID               string `gorm:"type:varchar(64);not null;default:''"`
-	CredentialID            uint   `gorm:"not null;default:0"`
-	Model                   string `gorm:"type:varchar(255);not null"`
-	RequestCount            int64  `gorm:"not null;check:chk_usage_journal_request_count,request_count = 1;check:chk_usage_journal_request_outcome,request_count = success_count + failure_count"`
-	SuccessCount            int64  `gorm:"not null;check:chk_usage_journal_success_count,success_count >= 0"`
-	FailureCount            int64  `gorm:"not null;check:chk_usage_journal_failure_count,failure_count >= 0"`
-	UncachedInputTokens     int64  `gorm:"column:uncached_input_tokens;not null;check:chk_usage_journal_uncached_input,uncached_input_tokens >= 0"`
-	OutputTokens            int64  `gorm:"not null;check:chk_usage_journal_output,output_tokens >= 0"`
-	CacheReadTokens         int64  `gorm:"not null;check:chk_usage_journal_cache_read,cache_read_tokens >= 0"`
-	CacheWrite5MTokens      int64  `gorm:"column:cache_write_5m_tokens;not null;check:chk_usage_journal_cache_write_5m,cache_write_5m_tokens >= 0"`
-	CacheWrite1HTokens      int64  `gorm:"column:cache_write_1h_tokens;not null;check:chk_usage_journal_cache_write_1h,cache_write_1h_tokens >= 0"`
-	CacheWriteUnknownTokens int64  `gorm:"column:cache_write_unknown_tokens;not null;check:chk_usage_journal_cache_write_unknown,cache_write_unknown_tokens >= 0"`
-	EstimatedCostNanoUSD    int64  `gorm:"column:estimated_cost_nano_usd;not null;check:chk_usage_journal_cost_nano,estimated_cost_nano_usd >= 0"`
-	UsageMissingCount       int64  `gorm:"not null;check:chk_usage_journal_usage_missing,usage_missing_count >= 0"`
-	PartialCount            int64  `gorm:"not null;check:chk_usage_journal_partial,partial_count >= 0"`
-	UnpricedRequestCount    int64  `gorm:"not null;check:chk_usage_journal_unpriced,unpriced_request_count >= 0"`
-	PricingPartialCount     int64  `gorm:"not null;check:chk_usage_journal_pricing_partial,pricing_partial_count >= 0"`
-	SpeedBucketStartMS      int64  `gorm:"column:speed_bucket_start_ms;not null;default:0;check:chk_usage_journal_speed_bucket,speed_bucket_start_ms >= 0"`
-	SpeedRequestCount       int64  `gorm:"not null;default:0;check:chk_usage_journal_speed_request_count,speed_request_count IN (0,1)"`
-	SpeedOutputTokens       int64  `gorm:"not null;default:0;check:chk_usage_journal_speed_output_tokens,speed_output_tokens >= 0"`
-	SpeedDurationMS         int64  `gorm:"column:speed_duration_ms;not null;default:0;check:chk_usage_journal_speed_duration,speed_duration_ms >= 0"`
-	Applied                 bool   `gorm:"not null;default:false;check:chk_usage_journal_applied,applied IN (TRUE, FALSE);index:idx_usage_aggregation_journal_pending_bucket,priority:1"`
+	RequestID                 string `gorm:"column:request_id;type:varchar(36);primaryKey;not null"`
+	BucketStartMS             int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_journal_bucket, bucket_start_ms >= 0;index:idx_usage_aggregation_journal_pending_bucket,priority:2"`
+	AccessKeyID               uint   `gorm:"not null"`
+	GroupID                   uint   `gorm:"not null"`
+	ChannelID                 string `gorm:"type:varchar(64);not null;default:''"`
+	CredentialID              uint   `gorm:"not null;default:0"`
+	Model                     string `gorm:"type:varchar(255);not null"`
+	RequestCount              int64  `gorm:"not null;check:chk_usage_journal_request_count,request_count = 1;check:chk_usage_journal_request_outcome,request_count = success_count + failure_count"`
+	SuccessCount              int64  `gorm:"not null;check:chk_usage_journal_success_count,success_count >= 0"`
+	FailureCount              int64  `gorm:"not null;check:chk_usage_journal_failure_count,failure_count >= 0"`
+	UncachedInputTokens       int64  `gorm:"column:uncached_input_tokens;not null;check:chk_usage_journal_uncached_input,uncached_input_tokens >= 0"`
+	OutputTokens              int64  `gorm:"not null;check:chk_usage_journal_output,output_tokens >= 0"`
+	CacheReadTokens           int64  `gorm:"not null;check:chk_usage_journal_cache_read,cache_read_tokens >= 0"`
+	CacheWrite5MTokens        int64  `gorm:"column:cache_write_5m_tokens;not null;check:chk_usage_journal_cache_write_5m,cache_write_5m_tokens >= 0"`
+	CacheWrite1HTokens        int64  `gorm:"column:cache_write_1h_tokens;not null;check:chk_usage_journal_cache_write_1h,cache_write_1h_tokens >= 0"`
+	CacheWriteUnknownTokens   int64  `gorm:"column:cache_write_unknown_tokens;not null;check:chk_usage_journal_cache_write_unknown,cache_write_unknown_tokens >= 0"`
+	EstimatedCostNanoUSD      int64  `gorm:"column:estimated_cost_nano_usd;not null;check:chk_usage_journal_cost_nano,estimated_cost_nano_usd >= 0"`
+	UsageMissingCount         int64  `gorm:"not null;check:chk_usage_journal_usage_missing,usage_missing_count >= 0"`
+	PartialCount              int64  `gorm:"not null;check:chk_usage_journal_partial,partial_count >= 0"`
+	UnpricedRequestCount      int64  `gorm:"not null;check:chk_usage_journal_unpriced,unpriced_request_count >= 0"`
+	PricingPartialCount       int64  `gorm:"not null;check:chk_usage_journal_pricing_partial,pricing_partial_count >= 0"`
+	SpeedBucketStartMS        int64  `gorm:"column:speed_bucket_start_ms;not null;default:0;check:chk_usage_journal_speed_bucket,speed_bucket_start_ms >= 0"`
+	SpeedRequestCount         int64  `gorm:"not null;default:0;check:chk_usage_journal_speed_request_count,speed_request_count IN (0,1)"`
+	SpeedOutputTokens         int64  `gorm:"not null;default:0;check:chk_usage_journal_speed_output_tokens,speed_output_tokens >= 0"`
+	SpeedDurationMS           int64  `gorm:"column:speed_duration_ms;not null;default:0;check:chk_usage_journal_speed_duration,speed_duration_ms >= 0"`
+	SpeedFirstResponseCount   int64  `gorm:"not null;default:0"`
+	SpeedFirstResponseTotalMS int64  `gorm:"column:speed_first_response_total_ms;not null;default:0"`
+	Applied                   bool   `gorm:"not null;default:false;check:chk_usage_journal_applied,applied IN (TRUE, FALSE);index:idx_usage_aggregation_journal_pending_bucket,priority:1"`
 }
 
 func (UsageAggregationJournal) TableName() string {
@@ -190,19 +192,19 @@ type UsageStat struct {
 	PricingPartialCount     int64  `gorm:"not null;default:0;check:chk_usage_stat_pricing_partial,pricing_partial_count >= 0"`
 }
 
-// UsageModelSpeedStat is a five-minute TPS aggregate by access key, channel,
-// upstream group, credential, and upstream model. New rows store the
-// output-generation window; legacy rows retain their original total-duration
-// denominator.
+// UsageModelSpeedStat stores five-minute output speed and first-response sources
+// by access key, channel, upstream group, credential, and upstream model.
 type UsageModelSpeedStat struct {
-	ID            uint   `gorm:"primaryKey;autoIncrement"`
-	BucketStartMS int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_model_speed_stat_bucket,bucket_start_ms >= 0;uniqueIndex:idx_usage_model_speed_stats_identity,priority:1;index:idx_usage_model_speed_stats_bucket"`
-	AccessKeyID   uint   `gorm:"not null;uniqueIndex:idx_usage_model_speed_stats_identity,priority:2"`
-	ChannelID     string `gorm:"type:varchar(64);not null;default:'';uniqueIndex:idx_usage_model_speed_stats_identity,priority:3"`
-	GroupID       uint   `gorm:"not null;uniqueIndex:idx_usage_model_speed_stats_identity,priority:4"`
-	CredentialID  uint   `gorm:"not null;default:0;uniqueIndex:idx_usage_model_speed_stats_identity,priority:5"`
-	Model         string `gorm:"type:varchar(255);not null;uniqueIndex:idx_usage_model_speed_stats_identity,priority:6"`
-	RequestCount  int64  `gorm:"not null;default:0;check:chk_usage_model_speed_stat_requests,request_count > 0"`
-	OutputTokens  int64  `gorm:"not null;default:0;check:chk_usage_model_speed_stat_output,output_tokens > 0"`
-	DurationMS    int64  `gorm:"column:duration_ms;not null;default:0;check:chk_usage_model_speed_stat_duration,duration_ms > 0"`
+	ID                   uint   `gorm:"primaryKey;autoIncrement"`
+	BucketStartMS        int64  `gorm:"column:bucket_start_ms;not null;check:chk_usage_model_speed_stat_bucket,bucket_start_ms >= 0;uniqueIndex:idx_usage_model_speed_stats_identity,priority:1;index:idx_usage_model_speed_stats_bucket"`
+	AccessKeyID          uint   `gorm:"not null;uniqueIndex:idx_usage_model_speed_stats_identity,priority:2"`
+	ChannelID            string `gorm:"type:varchar(64);not null;default:'';uniqueIndex:idx_usage_model_speed_stats_identity,priority:3"`
+	GroupID              uint   `gorm:"not null;uniqueIndex:idx_usage_model_speed_stats_identity,priority:4"`
+	CredentialID         uint   `gorm:"not null;default:0;uniqueIndex:idx_usage_model_speed_stats_identity,priority:5"`
+	Model                string `gorm:"type:varchar(255);not null;uniqueIndex:idx_usage_model_speed_stats_identity,priority:6"`
+	RequestCount         int64  `gorm:"not null;default:0;check:chk_usage_model_speed_stat_requests,request_count > 0"`
+	OutputTokens         int64  `gorm:"not null;default:0;check:chk_usage_model_speed_stat_output,output_tokens > 0"`
+	DurationMS           int64  `gorm:"column:duration_ms;not null;default:0;check:chk_usage_model_speed_stat_duration,duration_ms > 0"`
+	FirstResponseCount   int64  `gorm:"not null;default:0"`
+	FirstResponseTotalMS int64  `gorm:"column:first_response_total_ms;not null;default:0"`
 }
