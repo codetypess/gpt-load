@@ -264,8 +264,12 @@ watch(
             <OverflowTooltip as="dd" :content="scope.value">{{ scope.value }}</OverflowTooltip>
           </div>
           <div v-if="source(record.id).concurrency.limit > 0">
-            <dt>{{ t('concurrency.label') }}</dt>
-            <dd>{{ formatInteger(source(record.id).concurrency.limit, locale) }}</dd>
+            <dt>{{ t('concurrency.summaryLabel') }}</dt>
+            <dd>
+              {{ formatInteger(source(record.id).concurrency.current, locale) }}/{{
+                formatInteger(source(record.id).concurrency.limit, locale)
+              }}
+            </dd>
           </div>
         </dl>
       </div>

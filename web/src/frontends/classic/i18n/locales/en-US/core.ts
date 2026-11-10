@@ -11,6 +11,7 @@ export default {
   },
   concurrency: {
     label: 'Concurrency limit',
+    summaryLabel: 'Concurrency',
     value: 'Concurrency {current} / {limit}',
     inherit: 'Inherit default',
     unlimited: 'Unlimited',

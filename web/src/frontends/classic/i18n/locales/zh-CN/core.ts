@@ -11,6 +11,7 @@ export default {
   },
   concurrency: {
     label: '并发上限',
+    summaryLabel: '并发',
     value: '并发 {current} / {limit}',
     inherit: '继承默认值',
     unlimited: '不限',

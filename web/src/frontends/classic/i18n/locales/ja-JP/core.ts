@@ -11,6 +11,7 @@ export default {
   },
   concurrency: {
     label: '同時実行数の上限',
+    summaryLabel: '同時実行数',
     value: '同時実行 {current} / {limit}',
     inherit: 'デフォルトを継承',
     unlimited: '無制限',
